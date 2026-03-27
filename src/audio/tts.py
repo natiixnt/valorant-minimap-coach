@@ -3,11 +3,14 @@ import os
 import queue
 import threading
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pyttsx3
 
 _SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "user_settings.json")
+
+# Sentinel to unblock the worker on stop()
+_STOP = object()
 
 
 class TTSEngine:
@@ -17,9 +20,11 @@ class TTSEngine:
         self._queue: queue.Queue = queue.Queue()
         self._last_spoken: Dict[str, float] = {}
         self._muted: bool = False
+
         self._engine = pyttsx3.init()
         self._engine.setProperty("rate", cfg["rate"])
-        # Load saved voice
+
+        # Load saved voice -- done here in main thread before worker starts
         try:
             with open(_SETTINGS_PATH) as f:
                 saved = json.load(f)
@@ -27,6 +32,11 @@ class TTSEngine:
                 self._engine.setProperty("voice", saved["voice_id"])
         except Exception:
             pass
+
+        # Pending voice change: set from main thread, applied by worker before next say()
+        self._pending_voice: Optional[str] = None
+        self._voice_lock = threading.Lock()
+
         self._running = True
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
@@ -42,7 +52,7 @@ class TTSEngine:
             return
         self._last_spoken[text] = now
         if priority:
-            while not self._queue.empty():
+            while True:
                 try:
                     self._queue.get_nowait()
                 except queue.Empty:
@@ -50,6 +60,7 @@ class TTSEngine:
         self._queue.put(text)
 
     def list_voices(self) -> List[dict]:
+        # Safe to call from main thread -- only reads, not modifying engine state
         voices = self._engine.getProperty("voices")
         return [
             {
@@ -62,10 +73,16 @@ class TTSEngine:
 
     @property
     def current_voice_id(self) -> str:
+        with self._voice_lock:
+            pending = self._pending_voice
+        if pending is not None:
+            return pending
         return self._engine.getProperty("voice") or ""
 
     def set_voice(self, voice_id: str) -> None:
-        self._engine.setProperty("voice", voice_id)
+        # Queue the change for the worker thread to apply before next say()
+        with self._voice_lock:
+            self._pending_voice = voice_id
 
     def preview(self, voice_id: str) -> None:
         self.set_voice(voice_id)
@@ -74,12 +91,27 @@ class TTSEngine:
     def _worker(self) -> None:
         while self._running:
             try:
-                text = self._queue.get(timeout=0.5)
-                self._engine.say(text)
-                self._engine.runAndWait()
+                item = self._queue.get(timeout=0.5)
             except queue.Empty:
                 continue
+            if item is _STOP:
+                break
+            # Apply pending voice change in worker thread before speaking
+            with self._voice_lock:
+                voice = self._pending_voice
+                self._pending_voice = None
+            if voice:
+                self._engine.setProperty("voice", voice)
+            try:
+                self._engine.say(item)
+                self._engine.runAndWait()
+            except Exception as e:
+                print(f"[TTS] Engine error: {e}")
 
     def stop(self) -> None:
         self._running = False
-        self._thread.join(timeout=2)
+        try:
+            self._queue.put_nowait(_STOP)
+        except queue.Full:
+            pass
+        self._thread.join(timeout=3)
