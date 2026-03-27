@@ -24,10 +24,18 @@ Features:
 
 Threading model:
   A single daemon thread drains a bounded queue (max 64 items).
-  submit_*() methods are non-blocking and never raise.
+  Items are batched (_BATCH_SIZE or _BATCH_TIMEOUT) and pushed as a single
+  commit to a Hugging Face dataset repo -- no intermediate server needed.
+
+Dataset layout (mirrors server/collect_server.py):
+  minimap_callout/<sha12>/{ts}_v{ver}_conf{c}.jpg   + .json sidecar
+  footstep_audio/<label>/{ts}_v{ver}_conf{c}.npy    + .json sidecar
+  map_detection/<label>/{ts}_v{ver}_conf{c}.jpg     + .json sidecar
+  feedback/{ts}.json
 """
 import hashlib
 import io
+import json
 import queue
 import threading
 import time
@@ -45,27 +53,33 @@ def _frame_hash(img: np.ndarray) -> str:
     return hashlib.md5(tiny.tobytes()).hexdigest()
 
 
+def _safe(s: str, max_len: int = 60) -> str:
+    """Strip unsafe characters for use in repo paths."""
+    return "".join(c for c in str(s) if c.isalnum() or c in "_-.")[:max_len]
+
+
 class DataCollector:
-    _QUEUE_SIZE     = 64
-    _UPLOAD_TIMEOUT = 8     # seconds per HTTP request
-    _JPEG_QUALITY   = 80
-    _DEDUP_WINDOW   = 20.0  # skip identical frames seen within this many seconds
+    _QUEUE_SIZE    = 64
+    _BATCH_SIZE    = 10     # items per HF commit (fewer = more real-time; more = fewer API calls)
+    _BATCH_TIMEOUT = 120.0  # flush at least every N seconds even if batch isn't full
+    _JPEG_QUALITY  = 80
+    _DEDUP_WINDOW  = 20.0   # skip identical frames seen within this many seconds
 
     def __init__(self, config: dict) -> None:
-        cfg              = config.get("data_collection", {})
-        self.enabled     = cfg.get("enabled", False)
-        self.endpoint    = cfg.get("endpoint", "").rstrip("/")
-        self._api_key    = cfg.get("api_key", "")
+        cfg               = config.get("data_collection", {})
+        self.enabled      = cfg.get("enabled", False)
+        self._hf_repo     = cfg.get("hf_repo", "").strip()
+        self._hf_token    = cfg.get("hf_token", "").strip()
         self._app_version = config.get("app_version", "unknown")
         self._queue: queue.Queue = queue.Queue(maxsize=self._QUEUE_SIZE)
-        self._seen: dict[str, float] = {}   # hash -> last_seen timestamp
+        self._seen: dict[str, float] = {}
 
-        if self.enabled and self.endpoint:
+        if self.enabled and self._hf_repo:
             t = threading.Thread(target=self._worker, daemon=True, name="DataCollector")
             t.start()
-            print(f"[Collector] Enabled. Endpoint: {self.endpoint}  version: {self._app_version}")
+            print(f"[Collector] Enabled. HF repo: {self._hf_repo}  version: {self._app_version}")
         elif self.enabled:
-            print("[Collector] data_collection.enabled=true but endpoint is empty -- disabled.")
+            print("[Collector] data_collection.enabled=true but hf_repo is empty -- disabled.")
             self.enabled = False
 
     # ------------------------------------------------------------------
@@ -183,7 +197,6 @@ class DataCollector:
         """Return True if an identical frame was submitted within _DEDUP_WINDOW."""
         now = time.time()
         h = _frame_hash(img)
-        # Lazy eviction: only rebuild when dict grows large (avoids O(n) every call)
         if len(self._seen) > 200:
             self._seen = {k: v for k, v in self._seen.items() if now - v < self._DEDUP_WINDOW}
         elif h in self._seen and now - self._seen[h] >= self._DEDUP_WINDOW:
@@ -202,51 +215,102 @@ class DataCollector:
     _upload_errors = 0   # class-level counter for rate-limited logging
 
     def _worker(self) -> None:
+        batch: list = []
+        last_flush = time.time()
+
         while True:
-            item = self._queue.get()
+            # Block up to remaining time before next forced flush
+            timeout = max(0.5, self._BATCH_TIMEOUT - (time.time() - last_flush))
             try:
-                self._upload(item)
-                DataCollector._upload_errors = 0
-            except Exception as e:
-                DataCollector._upload_errors += 1
-                # Log first failure and every 10th afterwards to avoid log spam
-                if DataCollector._upload_errors == 1 or DataCollector._upload_errors % 10 == 0:
-                    print(f"[Collector] Upload failed ({DataCollector._upload_errors}x): {e}")
-            finally:
+                item = self._queue.get(timeout=timeout)
+                batch.append(item)
                 self._queue.task_done()
+            except queue.Empty:
+                pass
 
-    def _upload(self, item: dict) -> None:
-        try:
-            import requests
-        except ImportError:
-            return
-
-        headers = {}
-        if self._api_key:
-            headers["X-API-Key"] = self._api_key
-
-        # Feedback items use a separate lightweight endpoint
-        if item.get("type") == "feedback":
-            resp = requests.post(
-                f"{self.endpoint}/feedback",
-                json={"ts": item["ts"], "positive": item["positive"] == "1"},
-                headers=headers,
-                timeout=self._UPLOAD_TIMEOUT,
+            should_flush = (
+                len(batch) >= self._BATCH_SIZE
+                or (batch and time.time() - last_flush >= self._BATCH_TIMEOUT)
             )
-            resp.raise_for_status()
+            if should_flush:
+                self._flush_batch(batch)
+                batch = []
+                last_flush = time.time()
+
+    def _flush_batch(self, batch: list) -> None:
+        try:
+            from huggingface_hub import CommitOperationAdd, HfApi
+        except ImportError:
+            print("[Collector] huggingface_hub not installed. Run: pip install huggingface_hub")
             return
 
+        api = HfApi(token=self._hf_token or None)
+        operations = []
+
+        for item in batch:
+            try:
+                operations.extend(self._item_to_ops(item))
+            except Exception as e:
+                print(f"[Collector] Failed to prepare {item.get('type', '?')}: {e}")
+
+        if not operations:
+            return
+
+        try:
+            api.create_commit(
+                repo_id=self._hf_repo,
+                repo_type="dataset",
+                operations=operations,
+                commit_message=f"coach data: {len(batch)} samples",
+            )
+            DataCollector._upload_errors = 0
+        except Exception as e:
+            DataCollector._upload_errors += 1
+            if DataCollector._upload_errors == 1 or DataCollector._upload_errors % 10 == 0:
+                print(f"[Collector] HF upload failed ({DataCollector._upload_errors}x): {e}")
+
+    def _item_to_ops(self, item: dict) -> list:
+        from huggingface_hub import CommitOperationAdd
+
+        # Feedback: one small JSON file, no binary payload
+        if item.get("type") == "feedback":
+            content = json.dumps({
+                "ts":       item["ts"],
+                "positive": item["positive"] == "1",
+            }, ensure_ascii=False).encode()
+            return [CommitOperationAdd(
+                path_in_repo=f"feedback/{item['ts']}.json",
+                path_or_fileobj=io.BytesIO(content),
+            )]
+
+        function = _safe(item.get("type", "unknown"))
+        label    = item.get("label", "unknown")
         ext      = item.get("ext", "jpg")
-        mime     = "audio/x-numpy" if ext == "npy" else "image/jpeg"
-        data     = {k: str(v) for k, v in item.items() if k not in ("image", "ext")}
-        resp = requests.post(
-            f"{self.endpoint}/collect",
-            files={"file": (f"sample.{ext}", item["image"], mime)},
-            data=data,
-            headers=headers,
-            timeout=self._UPLOAD_TIMEOUT,
-        )
-        resp.raise_for_status()
+        ts       = item.get("ts", int(time.time()))
+        ver      = _safe(str(item.get("app_version", "unknown")))
+        conf     = float(item.get("conf", 0.0))
+
+        # Directory key: hash for free-text labels, safe string otherwise
+        if item.get("type") == "minimap_callout":
+            key = hashlib.sha1(label.encode()).hexdigest()[:12]
+        else:
+            key = _safe(label)
+
+        base = f"{function}/{key}"
+        stem = f"{ts}_v{ver}_conf{conf:.2f}"
+
+        meta = {k: v for k, v in item.items() if k not in ("image", "ext")}
+
+        return [
+            CommitOperationAdd(
+                path_in_repo=f"{base}/{stem}.{ext}",
+                path_or_fileobj=io.BytesIO(item["image"]),
+            ),
+            CommitOperationAdd(
+                path_in_repo=f"{base}/{stem}.json",
+                path_or_fileobj=io.BytesIO(json.dumps(meta, ensure_ascii=False).encode()),
+            ),
+        ]
 
     @staticmethod
     def _encode_jpg(img: np.ndarray) -> bytes:

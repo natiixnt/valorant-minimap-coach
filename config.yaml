@@ -23,10 +23,15 @@ detection:
   #     lower: [55, 140, 110]
   #     upper: [85, 255, 255]
 
+app_version: "1.0"   # increment after each release for dataset slicing
+
 ai:
   enabled: true
   model: "claude-sonnet-4-6"
   analyze_interval: 3.0
+  # --- local model (after running scripts/train.py) ---
+  use_local_model: false
+  local_model_path: "models/minimap_coach_lora/best"
 
 audio:
   engine: "pyttsx3"
@@ -44,6 +49,11 @@ map_detection:
 
 overlay:
   fade_after: 5.0  # seconds for enemy dot to fade after last detection
+
+data_collection:
+  enabled: false           # opt-in: set true to contribute training data
+  hf_repo: ""              # e.g. "your-name/valorant-coach-data" (HuggingFace dataset repo)
+  hf_token: ""             # HuggingFace token with write access (Settings → Access Tokens)
 
 audio_coach:
   enabled: true
