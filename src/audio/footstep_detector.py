@@ -2,19 +2,25 @@
 Footstep onset detection from game audio.
 
 Pipeline:
-  1. Band-pass the stereo signal to 50-600 Hz where footstep energy lives.
+  1. Band-pass the stereo signal to 200-800 Hz (Valorant footstep core band).
+     Community EQ data and competitive guides confirm 200-800 Hz for the "thud/weight",
+     with impact transients at 2-4 kHz (critical for surface localization).
   2. Compute spectral flux (frame-by-frame L2 norm of positive spectral diff).
   3. Adaptive threshold: median + k * MAD  (robust to varying game audio levels).
-  4. Debounce: minimum 120 ms between onsets (at 44.1 kHz this avoids double-trigger).
+  4. Debounce: minimum 120 ms between onsets.
 
-Footstep energy in Valorant (observed, no official data):
-  - Transient attack:  50-600 Hz  (structural/impact)
-  - Tonal tail:        600-2000 Hz (surface resonance)
-  - Carpet/soft:       muffled, energy mainly < 300 Hz
-  - Metal/tile:        bright tail, energy peaks 800-2000 Hz
-  - Wood:              warm mid, 200-800 Hz dominant
+Valorant-confirmed footstep data (Riot AMA + community EQ analysis):
+  - Core detection band:   200-800 Hz
+  - Transient/surface cue: 2-4 kHz (where human hearing is most sensitive to direction)
+  - Walking max range:     ~15 m
+  - Running max range:     ~50 m
+  - Crouched max range:    ~12 m
+  - Shift-walk:            silent (0 m)
+  - Attenuation model:     deliberately FLAT (not inverse-square). Riot confirmed they
+                           do not model realistic distance falloff -- footsteps stay
+                           audible clearly even at max range.
 
-Surface classification via spectral centroid uses the mono mix.
+Surface classification via spectral centroid of the full spectrum (not bandpassed).
 """
 from __future__ import annotations
 
@@ -24,18 +30,18 @@ from typing import List, Optional
 import numpy as np
 from scipy.signal import butter, sosfilt
 
-SAMPLE_RATE = 44100
+SAMPLE_RATE = 48000         # Valorant native sample rate; match system to 48 kHz
 FRAME_SIZE = 1024           # FFT frame
 HOP_SIZE = 512              # hop between frames
 
-# Bandpass for footstep energy
-_BP_LOW_HZ = 50
-_BP_HIGH_HZ = 600
+# Bandpass for footstep energy (Valorant core detection band)
+_BP_LOW_HZ = 200
+_BP_HIGH_HZ = 800
 
 # Onset detection
 _FLUX_THRESHOLD_K = 2.5     # threshold = median + k * MAD
 _MIN_ONSET_SEC = 0.12       # 120 ms minimum gap between onsets
-_MIN_ONSET_SAMPLES = int(_MIN_ONSET_SEC * SAMPLE_RATE / HOP_SIZE)  # in frames
+_MIN_ONSET_SAMPLES = int(_MIN_ONSET_SEC * SAMPLE_RATE / HOP_SIZE)  # in frames (recalculated at 48 kHz)
 
 # Surface spectral centroid breakpoints (Hz)
 _SURFACE_THRESHOLDS = [

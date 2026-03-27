@@ -1,19 +1,27 @@
 """
-Agent footstep classifier using MFCCs + spectral features.
+Footstep shoe-type classifier using MFCCs + spectral features.
 
-Training:
-  Collect short (~0.3 s) audio clips of each agent's footstep using
-  tools/collect_footsteps.py.  Then call:
-      classifier = AgentClassifier()
-      classifier.train(samples_dir="data/footsteps/")
-      classifier.save("data/footstep_model.pkl")
+IMPORTANT DESIGN NOTE (confirmed via Riot AMA):
+  Valorant agents do NOT have unique per-agent footstep sounds.
+  Riot uses a small set of "shoe type" categories mastered to equal competitive
+  loudness. The distinctions are tonal/character-based, not volume-based.
+  Confirmed shoe categories: heavy/combat boots (Brimstone, Breach), dress shoes
+  (Reyna). Full mapping is not publicly documented.
 
-Inference (real-time):
-      classifier = AgentClassifier()
-      classifier.load("data/footstep_model.pkl")
-      agent, confidence = classifier.predict(audio_chunk)
+  Therefore this classifier targets SHOE TYPE CATEGORIES, not individual agents:
+    - "heavy"  : combat boots (Brimstone, Breach, Sage, Killjoy, Deadlock...)
+    - "medium" : standard shoes (Sova, Skye, Fade, Gekko, Phoenix...)
+    - "light"  : light footwear (Jett, Neon, Yoru, Reyna, Chamber...)
 
-Feature vector (per clip, 21 features):
+  Training directory structure should use these three labels:
+    data/footsteps/heavy/001.npy
+    data/footsteps/medium/001.npy
+    data/footsteps/light/001.npy
+
+  Per-agent subdirectories also work; the classifier maps agent name -> shoe type
+  via AGENT_SHOE_TYPE for both training labels and output display.
+
+Feature vector (30 features per clip):
   - 13 MFCCs (mean over time)
   - 13 MFCC deltas (mean)
   - Spectral centroid (mean)
@@ -21,19 +29,11 @@ Feature vector (per clip, 21 features):
   - Zero-crossing rate (mean)
   - RMS energy
 
-Known Valorant footstep characteristics (community + empirical):
-  Heavy agents (Sage, KJ, Reyna, Breach, Sova, Cypher, Deadlock):
-    - Deeper thud, more low-frequency content
-    - Spectral centroid ~300-600 Hz
-  Light agents (Jett, Neon):
-    - Lighter tap, less bass
-    - Spectral centroid ~500-900 Hz
-  Neon (sprint): fast cadence, distinct cadence rhythm
-  Jett (glide): almost silent, very low amplitude
-
-Agents are grouped into broad acoustic classes to avoid over-fitting
-on limited training data. A "role" output (heavy/medium/light) is
-also provided alongside the per-agent prediction.
+Valorant-confirmed footstep spectral data:
+  - Core band: 200-800 Hz (body/impact)
+  - Transient/direction cue: 2-4 kHz
+  - Surface EQ boost recommendation: +3 dB @ 160-200 Hz (narrow Q), +4 dB @ 2-4 kHz
+  - System sample rate: 48 kHz (match OS audio to 48 kHz to avoid resampling)
 """
 from __future__ import annotations
 
@@ -44,22 +44,35 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-SAMPLE_RATE = 44100
+SAMPLE_RATE = 48000         # Valorant native 48 kHz
 CLIP_SECONDS = 0.35         # clip length for feature extraction
 N_MFCC = 13
 
-# Agent groups for hierarchical classification
-AGENT_ROLES: Dict[str, str] = {
-    "jett": "light", "neon": "light", "yoru": "light", "iso": "light",
-    "reyna": "medium", "phoenix": "medium", "clove": "medium",
+# Shoe type per agent (community-observed; full list not officially published by Riot).
+# Collected from Riot AMA + competitive community observations.
+# heavy = combat boots, medium = standard, light = soft/dress shoes
+AGENT_SHOE_TYPE: Dict[str, str] = {
+    # Confirmed heavy (combat boots) per Riot AMA
+    "brimstone": "heavy", "breach": "heavy",
+    # Community-observed heavy
     "sage": "heavy", "killjoy": "heavy", "cypher": "heavy", "deadlock": "heavy",
-    "breach": "heavy", "sova": "heavy", "skye": "heavy", "kayo": "heavy",
-    "omen": "heavy", "brimstone": "heavy", "viper": "heavy", "harbor": "heavy",
-    "astra": "heavy", "fade": "medium", "gekko": "medium", "chamber": "medium",
+    "harbor": "heavy", "kayo": "heavy", "omen": "heavy", "viper": "heavy",
+    "astra": "heavy", "sova": "heavy",
+    # Confirmed light/dress shoes per Riot AMA
+    "reyna": "light",
+    # Community-observed light
+    "jett": "light", "neon": "light", "yoru": "light", "iso": "light",
+    "chamber": "light",
+    # Medium (standard footwear)
+    "skye": "medium", "phoenix": "medium", "fade": "medium",
+    "gekko": "medium", "clove": "medium",
     "unknown": "unknown",
 }
 
-ALL_AGENTS = sorted([a for a in AGENT_ROLES if a != "unknown"])
+# Backwards-compat alias used in audio_coach.py
+AGENT_ROLES = AGENT_SHOE_TYPE
+
+ALL_AGENTS = sorted([a for a in AGENT_SHOE_TYPE if a != "unknown"])
 
 
 class AgentClassifier:
@@ -73,12 +86,22 @@ class AgentClassifier:
     # ------------------------------------------------------------------
     def train(self, samples_dir: str) -> None:
         """
-        Train from a directory tree:
+        Train from a directory tree.
+
+        Preferred structure (shoe types -- matches Valorant's actual design):
           samples_dir/
+            heavy/
+              001.npy   (float32 mono array at 48000 Hz)
+            medium/
+              001.npy
+            light/
+              001.npy
+
+        Per-agent directories also work (mapped to shoe type via AGENT_SHOE_TYPE):
+          samples_dir/
+            brimstone/
+              001.npy
             jett/
-              001.npy   (float32 mono array at 44100 Hz)
-              002.npy
-            sage/
               001.npy
             ...
 
@@ -96,7 +119,13 @@ class AgentClassifier:
         for agent_dir in sorted(base.iterdir()):
             if not agent_dir.is_dir():
                 continue
-            agent_name = agent_dir.name.lower()
+            dir_name = agent_dir.name.lower()
+            # Map per-agent directory names to shoe type labels automatically.
+            # If the directory is already a shoe type (heavy/medium/light), use it directly.
+            if dir_name in ("heavy", "medium", "light"):
+                label = dir_name
+            else:
+                label = AGENT_SHOE_TYPE.get(dir_name, "medium")
             clips = list(agent_dir.glob("*.npy")) + list(agent_dir.glob("*.wav"))
             for clip_path in clips:
                 audio = self._load_clip(clip_path)
@@ -104,7 +133,7 @@ class AgentClassifier:
                     continue
                 features = extract_features(audio)
                 X.append(features)
-                y_raw.append(agent_name)
+                y_raw.append(label)
 
         if not X:
             print("[AgentClassifier] No training samples found.")
@@ -149,9 +178,10 @@ class AgentClassifier:
     # ------------------------------------------------------------------
     def predict(self, audio: np.ndarray) -> Tuple[str, float, str]:
         """
-        audio: float32 mono array at 44100 Hz (at least CLIP_SECONDS long).
+        audio: float32 mono array at 48000 Hz (at least CLIP_SECONDS long).
 
-        Returns (agent_name, confidence, role).
+        Returns (shoe_type, confidence, shoe_type).
+        shoe_type is "heavy" | "medium" | "light" | "unknown".
         Falls back to ("unknown", 0.0, "unknown") if not trained.
         """
         if not self._trained or self._model is None:
@@ -167,10 +197,10 @@ class AgentClassifier:
         features = extract_features(audio).reshape(1, -1)
         proba = self._model.predict_proba(features)[0]
         best_idx = int(np.argmax(proba))
-        agent = self._label_map[best_idx] if best_idx < len(self._label_map) else "unknown"
+        shoe_type = self._label_map[best_idx] if best_idx < len(self._label_map) else "unknown"
         confidence = float(proba[best_idx])
-        role = AGENT_ROLES.get(agent, "unknown")
-        return agent, confidence, role
+        # Both returned values are shoe_type (role == shoe_type in this design)
+        return shoe_type, confidence, shoe_type
 
     # ------------------------------------------------------------------
     def _load_clip(self, path: Path) -> Optional[np.ndarray]:

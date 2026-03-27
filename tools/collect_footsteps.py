@@ -1,20 +1,32 @@
 #!/usr/bin/env python3
 """
-Training data collection tool for the agent footstep classifier.
+Training data collection tool for the footstep shoe-type classifier.
 
-Usage:
-    python tools/collect_footsteps.py --agent jett --output data/footsteps/
-    python tools/collect_footsteps.py --agent sage  --output data/footsteps/
+IMPORTANT: Valorant agents do NOT have unique per-agent footstep sounds (confirmed by
+Riot AMA). They use shoe type categories. Collect samples by shoe type:
+
+    python tools/collect_footsteps.py --agent heavy   --output data/footsteps/
+    python tools/collect_footsteps.py --agent medium  --output data/footsteps/
+    python tools/collect_footsteps.py --agent light   --output data/footsteps/
+
+Shoe type categories:
+  heavy  -- Brimstone, Breach, Sage, Killjoy, Cypher, Deadlock, Omen, Viper, Astra, Sova
+  medium -- Skye, Phoenix, Fade, Gekko, Clove, Harbor, KAYO
+  light  -- Jett, Neon, Yoru, Reyna, ISO, Chamber
+
+You can also use per-agent names (e.g. --agent jett) and they will be auto-mapped
+to shoe type during training.
 
 While recording:
-  - Play Valorant in the background (or use a recording/video)
+  - Have Valorant running or use a gameplay recording
   - Press SPACE when you hear a footstep to capture it
-  - Press Q to finish the session for this agent
+  - Press Q to finish the session
 
 Each captured clip is saved as:
-    data/footsteps/<agent>/<N>.npy   (float32 mono, 44100 Hz, 0.35 s)
+    data/footsteps/<shoe_type_or_agent>/<N>.npy   (float32 mono, 48000 Hz, 0.35 s)
 
-After collecting samples for all agents, train the model:
+Collect at least 20 samples per category, ideally 50+.
+After collecting, train the model:
     python tools/train_classifier.py --samples data/footsteps/ --output data/footstep_model.pkl
 """
 import argparse

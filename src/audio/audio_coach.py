@@ -157,17 +157,19 @@ class AudioCoach:
                 self.player_pos, map_dir, dist_m, scale_m_per_unit=scale
             )
 
-        # -- Agent classification
+        # -- Shoe type classification
+        # Note: Valorant agents do NOT have unique footstep sounds per Riot.
+        # We classify shoe type (heavy/medium/light) which maps to broad agent categories.
         mono_window = (stereo[0] + stereo[1]) * 0.5
         if len(mono_window) >= int(0.35 * SAMPLE_RATE):
-            agent, conf, role = self._classifier.predict(mono_window)
+            shoe_type, conf, _ = self._classifier.predict(mono_window)
         else:
-            agent, conf, role = "unknown", 0.0, "unknown"
+            shoe_type, conf = "unknown", 0.0
 
-        if conf < _AGENT_CONF_THRESHOLD:
-            agent_display = "someone"
+        if conf < _AGENT_CONF_THRESHOLD or shoe_type == "unknown":
+            shoe_display = "enemy"
         else:
-            agent_display = agent.capitalize()
+            shoe_display = f"{shoe_type}-step enemy"  # e.g. "heavy-step enemy"
 
         # -- Surface cross-check against map
         map_surface = get_surface(est_pos[0], est_pos[1], self.map_name)
@@ -183,7 +185,7 @@ class AudioCoach:
         direction_word = _az_to_word(az)
         dist_word = _dist_to_word(dist_m)
         voice = (
-            f"{agent_display} footstep {direction_word}, {dist_word}{surface_hint}"
+            f"{shoe_display} footstep {direction_word}, {dist_word}{surface_hint}"
         )
 
         overall_conf = float(np.clip(
@@ -192,8 +194,8 @@ class AudioCoach:
         ))
 
         return AudioFinding(
-            agent=agent,
-            agent_role=role,
+            agent=shoe_type,
+            agent_role=shoe_type,
             surface=surface,
             azimuth_deg=az,
             map_direction_deg=map_dir,

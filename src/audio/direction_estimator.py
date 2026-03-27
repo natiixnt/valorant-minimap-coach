@@ -4,20 +4,24 @@ Stereo direction estimation for footstep events.
 Combines two cues:
   ITD  — Interaural Time Delay.   Cross-correlation peak lag between L/R channels.
          Good at low frequencies (< 1.5 kHz).  Max lag at human head: ~0.65 ms
-         at 44.1 kHz ≈ ±29 samples.
+         at 48 kHz = ±31 samples.
 
   ILD  — Interaural Level Difference.  Log ratio of L/R RMS energy.
          Good at high frequencies (> 1.5 kHz).
 
-Valorant audio engine note (from community analysis):
-  - Simple panning: linear azimuth with head-width model.
-  - No full HRTF elevation cue.
-  - Max footstep hearing distance: ~20-25 m in-game.
-  - Above that: sound fully attenuated.
+Valorant audio engine (confirmed via Riot AMA + community):
+  - Wwise + THX Spatial Audio HRTF (introduced Patch 2.06).
+  - Fixed single-profile HRTF (not personalized).
+  - Pre-HRTF: sounds at 45° front-left and 45° rear-left were indistinguishable.
+  - Post-HRTF: full 3D sphere, elevation cues available.
+  - Running footsteps: audible up to ~50 m.
+  - Walking: ~15 m.  Crouched: ~12 m.  Shift-walk: silent.
 
-Distance estimate uses amplitude falloff (inverse-square law approximation).
-Reference amplitude _REF_AMP_DB is calibrated to ~a 5 m distance.
-Every -6 dB ≈ double the distance.
+IMPORTANT -- Valorant uses a FLAT attenuation model by design (confirmed by Riot).
+Volume does NOT fall off realistically with distance. A footstep at 5 m and at 40 m
+can have similar amplitude in the mix. Amplitude-based distance estimates are therefore
+unreliable and should be treated as a rough lower-bound (quieter = farther, but not
+accurate). The _estimate_distance() method provides a best-effort value only.
 
 Output azimuth is in degrees:
   0° = straight ahead (same direction player is facing)
@@ -29,20 +33,20 @@ from __future__ import annotations
 
 import numpy as np
 
-SAMPLE_RATE = 44100
+SAMPLE_RATE = 48000   # Valorant native sample rate
 
 # Max ITD lag for cross-correlation search (samples)
-# Human head ~0.65 ms → 44100 * 0.00065 ≈ 29 samples
+# Human head ~0.65 ms → 48000 * 0.00065 ≈ 31 samples
 _MAX_LAG = 32
 
 # Mixing weights for ITD vs ILD azimuth
 _ITD_WEIGHT = 0.6
 _ILD_WEIGHT = 0.4
 
-# Distance calibration
+# Distance calibration (unreliable due to Valorant flat attenuation -- use as rough estimate only)
 _REF_AMP_DB = -18.0   # dB RMS expected at ~5 m reference distance
 _REF_DIST_M = 5.0
-_MAX_DIST_M = 25.0
+_MAX_DIST_M = 50.0    # running footsteps audible up to ~50 m per Riot
 
 
 class DirectionEstimator:

@@ -22,7 +22,7 @@ from typing import Optional
 
 import numpy as np
 
-SAMPLE_RATE = 44100
+SAMPLE_RATE = 48000   # Valorant outputs at 48 kHz; match to avoid resampling artifacts
 CHANNELS = 2
 CHUNK_FRAMES = 1024          # frames per loopback read
 RING_SECONDS = 2.0           # ring buffer length
