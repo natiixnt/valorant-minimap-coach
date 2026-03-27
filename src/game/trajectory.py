@@ -117,16 +117,18 @@ class TrajectoryPredictor:
         t  = np.arange(len(hist), dtype=float)
 
         # Least-squares linear fit
-        vx = float(np.polyfit(t, xs, 1)[0])   # units/frame
-        vy = float(np.polyfit(t, ys, 1)[0])
+        cx = np.polyfit(t, xs, 1)   # [slope, intercept]
+        cy = np.polyfit(t, ys, 1)
+        vx = float(cx[0])           # units/frame
+        vy = float(cy[0])
         speed = np.sqrt(vx ** 2 + vy ** 2)
 
         if speed < _MIN_SPEED:
             return None   # enemy not moving
 
-        # Residuals -> confidence
-        pred_xs = np.polyval([vx, xs[0]], t)
-        residuals = np.std(xs - pred_xs) + np.std(ys - np.polyval([vy, ys[0]], t))
+        # Residuals -> confidence (use actual regression line, not forced-through-first-point)
+        pred_xs = np.polyval(cx, t)
+        residuals = np.std(xs - pred_xs) + np.std(ys - np.polyval(cy, t))
         conf = float(np.exp(-residuals / (speed + 1e-9) * 5.0))
 
         # Extrapolate

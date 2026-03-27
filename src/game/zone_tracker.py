@@ -27,7 +27,7 @@ from src.maps.callouts import pos_to_zone
 
 _MAX_MATCH_DIST = 0.15   # normalized units; beyond this = new enemy, not moved
 _CONFIRM_FRAMES = 2      # frames enemy must be in new zone before announcing
-_SLOT_COOLDOWN  = 6.0    # seconds before same slot can announce again
+_SLOT_COOLDOWN  = 10.0   # seconds before same slot can announce again
 
 
 class ZoneTracker:

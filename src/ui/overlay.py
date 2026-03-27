@@ -746,8 +746,11 @@ class SettingsWindow(ctk.CTkToplevel):
                     result = ("  rate limited -- key probably valid", "#ff9800")
                 else:
                     result = (f"  error: {msg[:50]}", "#ff9800")
-            self.after(0, lambda: self._key_status.configure(text=result[0], text_color=result[1]))
-            self.after(0, lambda: self._test_btn.configure(state="normal"))
+            def _update():
+                if self.winfo_exists():
+                    self._key_status.configure(text=result[0], text_color=result[1])
+                    self._test_btn.configure(state="normal")
+            self.after(0, _update)
 
         _t.Thread(target=_run, daemon=True).start()
 
@@ -807,6 +810,30 @@ class SettingsWindow(ctk.CTkToplevel):
             hover_color=c["dim"], font=("Consolas", 8, "bold"),
             corner_radius=2, command=self._test_voice,
         ).pack(side="left")
+
+        # Volume slider
+        vr = ctk.CTkFrame(parent, fg_color="transparent")
+        vr.pack(fill="x", padx=14, pady=(0, 8))
+        ctk.CTkLabel(vr, text="VOLUME:", text_color=c["dim"],
+                     font=("Consolas", 8, "bold")).pack(side="left", padx=(0, 8))
+        saved_vol = load_settings().get("tts_volume", 1.0)
+        self._vol_var = tk.DoubleVar(value=saved_vol * 100)
+        self._vol_lbl = ctk.CTkLabel(vr, text=f"{int(saved_vol * 100)}%",
+                                     text_color=c["text"],
+                                     font=("Consolas", 8, "bold"), width=36)
+        self._vol_lbl.pack(side="right")
+        ctk.CTkSlider(
+            vr, from_=0, to=100, variable=self._vol_var, width=140,
+            fg_color=c["panel"], button_color=c["accent"],
+            progress_color=c["accent"], command=self._on_vol_change,
+        ).pack(side="left")
+
+    def _on_vol_change(self, val) -> None:
+        pct = int(float(val))
+        if hasattr(self, "_vol_lbl"):
+            self._vol_lbl.configure(text=f"{pct}%")
+        if self._master.on_volume_change:
+            self._master.on_volume_change(float(val) / 100.0)
 
     def _filter_voices(self, voices: list, lang: str) -> list:
         if lang == "ALL":
@@ -924,6 +951,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self._voice_combo = None
         self._lang_filter = None
         self._filtered_voices = []
+        self._vol_var = None
+        self._vol_lbl = None
         self.configure(fg_color=colors["bg"])
         self._build()
         if highlight:
@@ -948,11 +977,13 @@ class SettingsWindow(ctk.CTkToplevel):
                 import os as _os
                 _os.environ["ANTHROPIC_API_KEY"] = api_key
 
+        tts_volume = float(self._vol_var.get()) / 100.0 if hasattr(self, "_vol_var") else 1.0
         save_settings({
             "colors":            new_c,
             "voice_id":          voice_id,
             "callout_lang":      self._master._current_lang,
             "anthropic_api_key": api_key,
+            "tts_volume":        tts_volume,
         })
         self.destroy()
 
@@ -978,10 +1009,11 @@ class OverlayWindow(ctk.CTk):
     def __init__(self, fade_after: float = 5.0) -> None:
         super().__init__()
         self._muted  = False
-        self.on_mute_change:   Optional[Callable[[bool], None]] = None
-        self.on_voice_change:  Optional[Callable[[str],  None]] = None
-        self.on_voice_preview: Optional[Callable[[str],  None]] = None
-        self.on_lang_change:   Optional[Callable[[str],  None]] = None
+        self.on_mute_change:    Optional[Callable[[bool],  None]] = None
+        self.on_voice_change:   Optional[Callable[[str],   None]] = None
+        self.on_voice_preview:  Optional[Callable[[str],   None]] = None
+        self.on_lang_change:    Optional[Callable[[str],   None]] = None
+        self.on_volume_change:  Optional[Callable[[float], None]] = None
         self._voice_options:   list = []
         self._tracker          = EnemyTracker(fade_after=fade_after)
         self._drag:            dict = {}
@@ -995,8 +1027,9 @@ class OverlayWindow(ctk.CTk):
         self._c = saved.get("colors", dict(THEMES["VALORANT"]))
         for k, v in THEMES["VALORANT"].items():
             self._c.setdefault(k, v)
-        self._current_voice_id = saved.get("voice_id", "")
-        self._current_lang     = saved.get("callout_lang", "EN")
+        self._current_voice_id   = saved.get("voice_id", "")
+        self._current_lang       = saved.get("callout_lang", "EN")
+        self._callout_text_visible = saved.get("callout_text_visible", True)
 
         self._setup_window()
         self._build_ui()
@@ -1134,6 +1167,7 @@ class OverlayWindow(ctk.CTk):
 
     def _build_utility_panel(self) -> None:
         p = self._panel("UTILITY")
+        self._utility_outer = self._panel_refs[-1][0]
         self._util_rows: List[ctk.CTkLabel] = []
         for _ in range(4):
             lbl = ctk.CTkLabel(p, text="", text_color=self._c["dim"],
@@ -1144,10 +1178,13 @@ class OverlayWindow(ctk.CTk):
 
     def _build_callout_panel(self) -> None:
         p = self._panel("CALLOUT")
+        self._callout_outer = self._panel_refs[-1][0]
         self._callout_lbl = ctk.CTkLabel(p, text="listening...",
                                          text_color=self._c["text"],
                                          font=FONT_MONO, wraplength=218, justify="left")
         self._callout_lbl.pack(anchor="w", padx=10, pady=(0, 8))
+        if not self._callout_text_visible:
+            self._callout_outer.pack_forget()
 
     # ── Defuse bar geometry constants ────────────────────────────────────────
     _DB_W   = 220    # canvas width  (px)
@@ -1274,12 +1311,23 @@ class OverlayWindow(ctk.CTk):
         bar.pack_propagate(False)
         self._bottombar = bar
         self._mute_btn = ctk.CTkButton(
-            bar, text="AUDIO ON", width=108, height=26,
+            bar, text="AUDIO ON", width=90, height=26,
             fg_color=c["accent"], text_color=c["bg"],
             hover_color=c["safe"], font=("Consolas", 8, "bold"),
             corner_radius=2, command=self._toggle_mute,
         )
-        self._mute_btn.pack(side="left", padx=10, pady=7)
+        self._mute_btn.pack(side="left", padx=(8, 0), pady=7)
+        txt_on = self._callout_text_visible
+        self._callout_btn = ctk.CTkButton(
+            bar,
+            text="TEXT ON" if txt_on else "TEXT OFF",
+            width=72, height=26,
+            fg_color=c["accent"] if txt_on else c["panel"],
+            text_color=c["bg"] if txt_on else c["dim"],
+            hover_color=c["safe"], font=("Consolas", 8, "bold"),
+            corner_radius=2, command=self._toggle_callout_panel,
+        )
+        self._callout_btn.pack(side="left", padx=(4, 0), pady=7)
         ctk.CTkLabel(bar, text="F9  HIDE", text_color=c["dim"],
                      font=("Consolas", 7, "bold")).pack(side="right", padx=10)
 
@@ -1297,6 +1345,8 @@ class OverlayWindow(ctk.CTk):
         self._close_btn.recolor(fg=c["dim"], bg=c["title"], hover_bg=c["enemy"], hover_fg=c["text"])
         self._settings_btn.recolor(fg=c["dim"], bg=c["title"], hover_bg=c["panel"], hover_fg=c["dim"])
         for outer, stripe, hdr_lbl in self._panel_refs:
+            if not outer.winfo_exists():
+                continue
             outer.configure(fg_color=c["panel"])
             stripe.configure(fg_color=c["accent"])
             hdr_lbl.configure(text_color=c["accent"])
@@ -1322,6 +1372,11 @@ class OverlayWindow(ctk.CTk):
         self._mute_btn.configure(
             fg_color=c["accent"] if not self._muted else c["panel"],
             text_color=c["bg"]   if not self._muted else c["dim"],
+            hover_color=c["safe"],
+        )
+        self._callout_btn.configure(
+            fg_color=c["accent"] if self._callout_text_visible else c["panel"],
+            text_color=c["bg"]   if self._callout_text_visible else c["dim"],
             hover_color=c["safe"],
         )
         self._draw_canvas(self._tracker.tick(time.time()))
@@ -1390,6 +1445,19 @@ class OverlayWindow(ctk.CTk):
                                      text_color=c["bg"])
         if self.on_mute_change:
             self.on_mute_change(self._muted)
+
+    def _toggle_callout_panel(self) -> None:
+        c = self._c
+        self._callout_text_visible = not self._callout_text_visible
+        if self._callout_text_visible:
+            self._callout_outer.pack(fill="x", pady=(2, 0), after=self._utility_outer)
+            self._callout_btn.configure(text="TEXT ON", fg_color=c["accent"],
+                                        text_color=c["bg"])
+        else:
+            self._callout_outer.pack_forget()
+            self._callout_btn.configure(text="TEXT OFF", fg_color=c["panel"],
+                                        text_color=c["dim"])
+        save_settings({"callout_text_visible": self._callout_text_visible})
 
     def _toggle_visible(self) -> None:
         if self._visible:

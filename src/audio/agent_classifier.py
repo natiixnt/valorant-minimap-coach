@@ -240,7 +240,7 @@ class AgentClassifier:
 # ------------------------------------------------------------------
 
 def extract_features(audio: np.ndarray) -> np.ndarray:
-    """Return 1D feature vector of length 43."""
+    """Return 1D feature vector of length 30 (13 MFCC + 13 delta + 4 spectral)."""
     sr = SAMPLE_RATE
     clip_len = int(CLIP_SECONDS * sr)
     if len(audio) < clip_len:

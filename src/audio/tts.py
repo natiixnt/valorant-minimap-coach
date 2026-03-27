@@ -4,7 +4,7 @@ import queue
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import pyttsx3
 
@@ -41,11 +41,24 @@ class TTSEngine:
     Worker checks item.is_stale() before each say(). Stale items are silently
     dropped -- prevents speaking "enemy A" 5 seconds after the situation changed.
 
+    _last_spoken is updated only when an item is ACTUALLY SPOKEN (in the worker),
+    not when it is queued. This prevents stale-dropped items from locking out
+    the same callout via cooldown even though it was never heard.
+
+    _pending_texts tracks what is currently in the queue to prevent double-queuing
+    the same text before the worker has a chance to process it.
+
     Default TTL per callout category (pass explicitly from coach.py):
-      - spike / defuse / gunshot : priority=True  (TTL 10s, flushes queue)
-      - enemy spotted / zones    : ttl=2.5s
-      - footsteps                : ttl=1.5s
-      - economy / ult / heatmap  : ttl=12.0s  (informational, survives a few speaks)
+      - spike / rush / execute / split : priority=True  (TTL 10s, flushes queue)
+      - lurk / mid_ctrl               : ttl=4.0s
+      - enemy spotted                 : priority=True
+      - zone transitions              : ttl=2.0s
+      - trajectory prediction         : ttl=1.5s  (matches prediction window)
+      - ability                       : ttl=4.0s
+      - footsteps                     : ttl=2.0s
+      - gunshot                       : ttl=1.5s
+      - site clear                    : ttl=4.0s
+      - economy / ult / heatmap       : ttl=12.0s  (informational, survives a few speaks)
     """
 
     def __init__(self, config: dict):
@@ -54,7 +67,25 @@ class TTSEngine:
         self._queue: queue.PriorityQueue = queue.PriorityQueue()
         self._queue_depth = 0          # count of non-priority items currently enqueued
         self._depth_lock  = threading.Lock()
+
+        # _last_spoken: text -> wall time when SPOKEN (updated in worker, not in speak())
+        # _pending_texts: set of texts currently sitting in queue (dedup guard)
+        # _spoken_lock: guards both dicts from concurrent access between speak() and worker
         self._last_spoken: Dict[str, float] = {}
+        self._pending_texts: Set[str] = set()
+        self._spoken_lock = threading.Lock()
+
+        # Token bucket: limits non-priority callout burst rate.
+        # Capacity=2, refill=1 token per 4s -> max ~15 non-priority speaks/min sustained.
+        # Priority calls bypass the bucket entirely.
+        self._bucket_tokens: float = 2.0
+        self._bucket_last_refill: float = time.monotonic()
+        self._bucket_lock = threading.Lock()
+        _BUCKET_CAPACITY    = 2.0
+        _BUCKET_REFILL_RATE = 1.0 / 4.0  # tokens/second
+        self._BUCKET_CAPACITY    = _BUCKET_CAPACITY
+        self._BUCKET_REFILL_RATE = _BUCKET_REFILL_RATE
+
         self._muted: bool = False
 
         try:
@@ -70,11 +101,16 @@ class TTSEngine:
                     saved = json.load(f)
                 if "voice_id" in saved:
                     self._engine.setProperty("voice", saved["voice_id"])
+                if "tts_volume" in saved:
+                    self._engine.setProperty("volume", float(saved["tts_volume"]))
             except Exception:
                 pass
 
         self._pending_voice: Optional[str] = None
         self._voice_lock = threading.Lock()
+
+        self._pending_volume: Optional[float] = None
+        self._volume_lock = threading.Lock()
 
         self._running = True
         self._thread = threading.Thread(target=self._worker, daemon=True)
@@ -83,17 +119,26 @@ class TTSEngine:
     def set_muted(self, muted: bool) -> None:
         self._muted = muted
 
+    def set_volume(self, vol: float) -> None:
+        """Set TTS volume (0.0 = silent, 1.0 = full). Applied before next utterance."""
+        with self._volume_lock:
+            self._pending_volume = max(0.0, min(1.0, vol))
+
     def speak(self, text: str, priority: bool = False, ttl: float = 2.5) -> None:
         if self._muted:
             return
-        now_wall = time.time()
-        if now_wall - self._last_spoken.get(text, 0) < self.cooldown:
-            return
-        self._last_spoken[text] = now_wall
 
         if priority:
-            # Drain queue entirely, then enqueue with long TTL
+            # Check cooldown (based on last actual speak time)
+            with self._spoken_lock:
+                now_wall = time.time()
+                if now_wall - self._last_spoken.get(text, 0) < self.cooldown:
+                    return
+            # Drain queue first (also clears _pending_texts)
             self._drain_queue()
+            # Add to pending, then enqueue
+            with self._spoken_lock:
+                self._pending_texts.add(text)
             item = _Item(
                 priority_key=0,
                 queued_at=time.monotonic(),
@@ -102,9 +147,31 @@ class TTSEngine:
             )
             self._queue.put(item)
         else:
+            # Token bucket rate limit: caps non-priority burst without silencing priority
+            with self._bucket_lock:
+                now_m = time.monotonic()
+                elapsed = now_m - self._bucket_last_refill
+                self._bucket_tokens = min(
+                    self._BUCKET_CAPACITY,
+                    self._bucket_tokens + elapsed * self._BUCKET_REFILL_RATE,
+                )
+                self._bucket_last_refill = now_m
+                if self._bucket_tokens < 1.0:
+                    return  # rate-limited: too many callouts in short window
+                self._bucket_tokens -= 1.0
+
+            with self._spoken_lock:
+                # Already in queue: skip (dedup)
+                if text in self._pending_texts:
+                    return
+                # Cooldown based on last actual speak time
+                now_wall = time.time()
+                if now_wall - self._last_spoken.get(text, 0) < self.cooldown:
+                    return
+                self._pending_texts.add(text)
+
             with self._depth_lock:
                 if self._queue_depth >= _MAX_QUEUE_DEPTH:
-                    # Drop oldest item by draining and re-enqueueing all but first
                     self._drop_oldest_nonpriority()
                 self._queue_depth += 1
 
@@ -124,6 +191,9 @@ class TTSEngine:
                 break
         with self._depth_lock:
             self._queue_depth = 0
+        # All pending items are gone -- clear the dedup set
+        with self._spoken_lock:
+            self._pending_texts.clear()
 
     def _drop_oldest_nonpriority(self) -> None:
         """Pull all items, discard the one that has been waiting longest, re-enqueue rest."""
@@ -143,7 +213,9 @@ class TTSEngine:
                 oldest_idx = i
 
         if oldest_idx is not None:
-            items.pop(oldest_idx)
+            dropped = items.pop(oldest_idx)
+            with self._spoken_lock:
+                self._pending_texts.discard(dropped.text)
             self._queue_depth = max(0, self._queue_depth - 1)
 
         for it in items:
@@ -193,12 +265,25 @@ class TTSEngine:
                 if item.priority_key == 1:
                     self._queue_depth = max(0, self._queue_depth - 1)
 
-            # Drop stale items silently
+            # Always remove from pending set when dequeued (spoken or stale)
+            with self._spoken_lock:
+                self._pending_texts.discard(item.text)
+
+            # Drop stale items silently -- do NOT update _last_spoken.
+            # This allows the same callout to be re-queued immediately next tick
+            # if the situation is still relevant.
             if isinstance(item, _Item) and item.is_stale():
                 continue
 
             if not self._engine:
                 continue
+
+            with self._volume_lock:
+                vol = self._pending_volume
+                self._pending_volume = None
+            if vol is not None:
+                self._engine.setProperty("volume", vol)
+
             with self._voice_lock:
                 voice = self._pending_voice
                 self._pending_voice = None
@@ -207,6 +292,9 @@ class TTSEngine:
             try:
                 self._engine.say(item.text)
                 self._engine.runAndWait()
+                # Cooldown runs from when item was actually SPOKEN, not queued
+                with self._spoken_lock:
+                    self._last_spoken[item.text] = time.time()
             except Exception as e:
                 print(f"[TTS] Engine error: {e}")
 

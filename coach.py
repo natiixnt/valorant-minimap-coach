@@ -11,7 +11,7 @@ from src.capture.screen import ScreenCapture
 from src.core.perf_monitor import PerfMonitor
 from src.game.economy import EconomyTracker
 from src.game.heatmap import Heatmap
-from src.game.play_detector import PlayDetector
+from src.game.play_detector import PlayDetector, PlayType
 from src.game.retake_advisor import RetakeAdvisor
 from src.game.round_state import RoundState, State
 from src.game.trajectory import TrajectoryPredictor
@@ -115,6 +115,7 @@ class Coach:
         self._recent_ai_callouts: List[str] = []
         self._audio_round_ended  = False
         self._running            = True
+        self._shutdown_done      = False
         self._overlay: Optional["OverlayWindow"] = None
 
         # Wire round audio callbacks
@@ -124,8 +125,9 @@ class Coach:
     # ------------------------------------------------------------------
     def set_overlay(self, overlay: "OverlayWindow") -> None:
         self._overlay = overlay
-        overlay.on_mute_change = self.tts.set_muted
-        overlay.on_feedback    = self.collector.submit_feedback
+        overlay.on_mute_change   = self.tts.set_muted
+        overlay.on_volume_change = self.tts.set_volume
+        overlay.on_feedback      = self.collector.submit_feedback
 
     def set_callout_lang(self, lang: str) -> None:
         with self._lang_lock:
@@ -169,6 +171,8 @@ class Coach:
         self.ult_tracker.on_round_end(self.round_state.round_num)
         self.round_state.on_round_end_sound()
         self.heatmap.end_round(self.round_state.round_num)
+        econ = self.economy.status()
+        self._speak(econ.voice, ttl=12.0)
         hot = self.heatmap.hottest_zones(2)
         if hot:
             self._speak(self.heatmap.summary(), ttl=15.0)  # round summary, no rush
@@ -264,15 +268,18 @@ class Coach:
             self._speak(trans, ttl=2.0)
             self._ui(self._overlay.update_callout, trans)  # type: ignore[union-attr]
 
-        # -- Trajectory prediction (stale fast -- 1.5s lookahead window)
+        # -- Trajectory prediction (stale fast -- TTL matches 1.5s lookahead window)
         for pred in self.trajectory.update(result.enemies, self.map_name):
-            self._speak(pred, ttl=2.0)
+            self._speak(pred, ttl=1.5)
             self._ui(self._overlay.update_callout, pred)  # type: ignore[union-attr]
 
         # -- Play pattern detection (rush/split/lurk/execute)
         play = self.play_det.update(result.enemies, self.map_name)
         if play:
-            self._speak(play.voice, priority=True)
+            # RUSH / EXECUTE / SPLIT are site-attack patterns -- flush queue and speak now.
+            # LURK / MID_CTRL are informational -- queue normally, don't flush.
+            urgent = play.play in (PlayType.RUSH, PlayType.EXECUTE, PlayType.SPLIT)
+            self._speak(play.voice, priority=urgent, ttl=4.0)
             self._ui(self._overlay.update_callout, play.voice)  # type: ignore[union-attr]
 
         # -- UI: enemies
@@ -383,7 +390,7 @@ class Coach:
         # -- Site clear (only during active round to avoid buy-phase false positives)
         if (self._prev_enemy_count >= 2 and result.enemy_count == 0
                 and self.round_state.state == State.ROUND_ACTIVE):
-            self._speak("Site clear")
+            self._speak("Site clear", ttl=4.0)
             self._ui(self._overlay.update_callout, "Site clear")  # type: ignore[union-attr]
 
         self._prev_enemy_count = result.enemy_count
@@ -457,6 +464,9 @@ class Coach:
 
     # ------------------------------------------------------------------
     def _shutdown(self) -> None:
+        if self._shutdown_done:
+            return
+        self._shutdown_done = True
         self.audio_coach.stop()
         self.tts.stop()
         self.capture.close()
