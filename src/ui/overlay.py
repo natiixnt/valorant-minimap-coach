@@ -29,16 +29,25 @@ _SIGHTING_RADIUS = 0.15
 
 
 def _register_fa_font() -> str:
-    """Register FA TTF with macOS CoreText so tkinter can use it as a vector font."""
-    try:
-        import CoreText
-        from Foundation import NSURL
-        url = NSURL.fileURLWithPath_(os.path.abspath(_FA_FONT))
-        CoreText.CTFontManagerRegisterFontsForURL(
-            url, CoreText.kCTFontManagerScopeProcess, None
-        )
-    except Exception:
-        pass
+    """Register Font Awesome TTF so tkinter can use it as a vector font."""
+    import sys
+    if sys.platform == "darwin":
+        try:
+            import CoreText
+            from Foundation import NSURL
+            url = NSURL.fileURLWithPath_(os.path.abspath(_FA_FONT))
+            CoreText.CTFontManagerRegisterFontsForURL(
+                url, CoreText.kCTFontManagerScopeProcess, None
+            )
+        except Exception:
+            pass
+    elif sys.platform == "win32":
+        try:
+            import ctypes
+            # FR_PRIVATE (0x10): font available only to this process, auto-removed on exit
+            ctypes.windll.gdi32.AddFontResourceExW(os.path.abspath(_FA_FONT), 0x10, 0)
+        except Exception:
+            pass
     return "Font Awesome 6 Free Solid"
 
 
