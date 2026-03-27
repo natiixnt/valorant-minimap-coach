@@ -31,6 +31,8 @@ from src.audio.capture import AudioCapture, SAMPLE_RATE
 from src.audio.footstep_detector import FootstepDetector, FootstepEvent
 from src.audio.direction_estimator import DirectionEstimator, audio_az_to_map_direction, direction_to_map_pos
 from src.audio.agent_classifier import AgentClassifier
+from src.audio.gunshot_detector import GunDetector, GunEvent
+from src.audio.noise_gate import NoiseGate
 from src.audio.round_audio import RoundAudioDetector
 from src.maps.callouts import pos_to_zone
 from src.maps.surfaces import get_surface, surface_matches, surface_to_voice
@@ -77,18 +79,20 @@ class AudioCoach:
         device_name: Optional[str] = audio_cfg.get("device", None)
 
         self._capture = AudioCapture(device_name=device_name)
-        self._footstep_det = FootstepDetector()
+        self._noise_gate    = NoiseGate()
+        self._footstep_det  = FootstepDetector()
+        self._gun_det       = GunDetector()
         self._direction_est = DirectionEstimator()
-        self._classifier = AgentClassifier()
+        self._classifier    = AgentClassifier()
 
         # Try to load pre-trained model
         if os.path.exists(_MODEL_PATH):
             self._classifier.load(_MODEL_PATH)
         else:
-            print("[AudioCoach] No footstep model found. Agent identification disabled.")
+            print("[AudioCoach] No footstep model found. Shoe-type ID disabled.")
             print(f"             Train with: python tools/collect_footsteps.py")
 
-        self._queue: queue.Queue[AudioFinding] = queue.Queue()
+        self._queue: queue.Queue = queue.Queue()   # AudioFinding | GunEvent
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
@@ -118,15 +122,15 @@ class AudioCoach:
         if self._thread:
             self._thread.join(timeout=3)
 
-    def poll(self) -> List[AudioFinding]:
-        """Drain and return all pending AudioFinding objects (called from coach loop)."""
-        findings = []
+    def poll(self) -> list:
+        """Drain and return all pending AudioFinding and GunEvent objects."""
+        items = []
         try:
             while True:
-                findings.append(self._queue.get_nowait())
+                items.append(self._queue.get_nowait())
         except queue.Empty:
             pass
-        return findings
+        return items
 
     # ------------------------------------------------------------------
     def _analysis_loop(self) -> None:
@@ -142,8 +146,18 @@ class AudioCoach:
             # Round audio event detection (round start horn, win/loss jingle)
             self.round_audio.process(mono)
 
-            # Footstep detection
-            events: List[FootstepEvent] = self._footstep_det.process(stereo)
+            # Gunshot detection (before noise gate -- gunshots ARE the transients)
+            gun_events: List[GunEvent] = self._gun_det.process(stereo)
+            for ge in gun_events:
+                self._queue.put(ge)
+
+            # Noise gate: suppress gunshot/explosion transients before footstep detection
+            gated_l = self._noise_gate.process(stereo[0])
+            gated_r = self._noise_gate.process(stereo[1])
+            gated_stereo = np.stack([gated_l, gated_r])
+
+            # Footstep detection on gated audio (false positives suppressed)
+            events: List[FootstepEvent] = self._footstep_det.process(gated_stereo)
 
             for event in events:
                 finding = self._process_event(event, stereo)
