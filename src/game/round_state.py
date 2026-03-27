@@ -51,6 +51,7 @@ class RoundState:
         self._state_start = time.monotonic()
         self._clear_ticks = 0
         self._prev_enemy_count = 0
+        self._finished: bool = False        # guard against double _finish_round()
 
     # ------------------------------------------------------------------
     # External triggers
@@ -73,6 +74,7 @@ class RoundState:
         """Force reset to buy phase (called at round start)."""
         self._transition(State.BUY_PHASE)
         self._clear_ticks = 0
+        self._finished = False
 
     # ------------------------------------------------------------------
     # Per-tick update
@@ -159,6 +161,9 @@ class RoundState:
         self._clear_ticks = 0
 
     def _finish_round(self) -> None:
+        if self._finished:
+            return
+        self._finished = True
         self.round_num += 1
         if self.round_num == _HALF_AT_ROUND + 1:
             self.on_attack = not self.on_attack

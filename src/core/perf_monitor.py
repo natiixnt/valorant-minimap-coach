@@ -18,6 +18,8 @@ import time
 from collections import deque
 from typing import Deque
 
+import numpy as np
+
 
 class PerfMonitor:
     def __init__(self, target_interval: float = 0.1, history: int = 60) -> None:
@@ -56,6 +58,4 @@ class PerfMonitor:
     def p95_ms(self) -> float:
         if not self._history:
             return 0.0
-        arr = sorted(self._history)
-        idx = max(0, int(len(arr) * 0.95) - 1)
-        return arr[idx] * 1000
+        return float(np.percentile(self._history, 95)) * 1000

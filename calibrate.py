@@ -56,9 +56,13 @@ def select_minimap(img: np.ndarray):
 
 
 def save_region(region: dict, path: str = "config.yaml") -> None:
-    with open(path) as f:
-        config = yaml.safe_load(f)
-    config["minimap"]["region"] = region
+    try:
+        with open(path) as f:
+            config = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        print(f"[Calibrate] {path} not found. Create it before running calibrate.")
+        return
+    config.setdefault("minimap", {})["region"] = region
     with open(path, "w") as f:
         yaml.dump(config, f, default_flow_style=False)
     print(f"[Calibrate] Saved to {path}: {region}")

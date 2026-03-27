@@ -139,6 +139,10 @@ class AgentClassifier:
             print("[AgentClassifier] No training samples found.")
             return
 
+        if len(set(y_raw)) < 2:
+            print(f"[AgentClassifier] Only one class found: {set(y_raw)}. Need at least 2 classes to train.")
+            return
+
         X_arr = np.array(X)
         le = LabelEncoder()
         y = le.fit_transform(y_raw)
