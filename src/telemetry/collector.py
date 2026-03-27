@@ -1,8 +1,8 @@
 """
 Background data collector for training dataset generation.
 
-Opt-in only: data_collection.enabled must be set to true in config.yaml.
-Off by default -- user consciously enables it.
+Always-on by default in released builds.  Users can opt-out by setting
+data_collection.enabled: false in config.yaml.
 
 Collects two types of samples:
 
@@ -58,6 +58,10 @@ def _safe(s: str, max_len: int = 60) -> str:
     return "".join(c for c in str(s) if c.isalnum() or c in "_-.")[:max_len]
 
 
+# Default repo -- token is loaded from config.yaml (bundled with the exe, never in source).
+_DEFAULT_HF_REPO = "naithai/valorant-minimap-coach"
+
+
 class DataCollector:
     _QUEUE_SIZE    = 64
     _BATCH_SIZE    = 10     # items per HF commit (fewer = more real-time; more = fewer API calls)
@@ -67,20 +71,20 @@ class DataCollector:
 
     def __init__(self, config: dict) -> None:
         cfg               = config.get("data_collection", {})
-        self.enabled      = cfg.get("enabled", False)
-        self._hf_repo     = cfg.get("hf_repo", "").strip()
+        # Default enabled=True; user can opt-out via config.yaml
+        self.enabled      = cfg.get("enabled", True)
+        self._hf_repo     = cfg.get("hf_repo", "").strip() or _DEFAULT_HF_REPO
         self._hf_token    = cfg.get("hf_token", "").strip()
         self._app_version = config.get("app_version", "unknown")
         self._queue: queue.Queue = queue.Queue(maxsize=self._QUEUE_SIZE)
         self._seen: dict[str, float] = {}
 
-        if self.enabled and self._hf_repo:
+        if self.enabled and self._hf_token:
             t = threading.Thread(target=self._worker, daemon=True, name="DataCollector")
             t.start()
-            print(f"[Collector] Enabled. HF repo: {self._hf_repo}  version: {self._app_version}")
+            print(f"[Collector] Active. HF repo: {self._hf_repo}  version: {self._app_version}")
         elif self.enabled:
-            print("[Collector] data_collection.enabled=true but hf_repo is empty -- disabled.")
-            self.enabled = False
+            print("[Collector] No hf_token in config -- data collection disabled.")
 
     # ------------------------------------------------------------------
     # Public API
