@@ -33,7 +33,7 @@ _DEFAULTS: Dict[str, dict] = {
     "reyna_eye": {
         "lower": [145, 80, 140],
         "upper": [165, 255, 255],
-        "voice": "Reyna eye, don't peek",
+        "voice": "Reyna eye at {zone}, don't peek",
         "display": "Reyna Eye",
         "color": "#e040fb",
         "min_area": 6,
@@ -41,7 +41,7 @@ _DEFAULTS: Dict[str, dict] = {
     "viper_wall": {
         "lower": [55, 140, 110],
         "upper": [85, 255, 255],
-        "voice": "Viper wall on the map",
+        "voice": "Viper wall at {zone}",
         "display": "Viper Wall",
         "color": "#3ec17c",
         "min_area": 10,
@@ -49,7 +49,7 @@ _DEFAULTS: Dict[str, dict] = {
     "sage_wall": {
         "lower": [0, 0, 215],
         "upper": [180, 35, 255],
-        "voice": "Sage wall blocking",
+        "voice": "Sage wall at {zone}",
         "display": "Sage Wall",
         "color": "#ecf0f1",
         "min_area": 12,
@@ -57,7 +57,7 @@ _DEFAULTS: Dict[str, dict] = {
     "killjoy": {
         "lower": [20, 140, 140],
         "upper": [35, 255, 255],
-        "voice": "Killjoy setup in the area",
+        "voice": "Killjoy setup at {zone}",
         "display": "Killjoy",
         "color": "#f9c74f",
         "min_area": 5,
@@ -65,7 +65,7 @@ _DEFAULTS: Dict[str, dict] = {
     "sova_bolt": {
         "lower": [12, 170, 170],
         "upper": [28, 255, 255],
-        "voice": "Sova scan landing",
+        "voice": "Sova bolt at {zone}",
         "display": "Sova Bolt",
         "color": "#f77f00",
         "min_area": 5,
@@ -73,7 +73,7 @@ _DEFAULTS: Dict[str, dict] = {
     "phoenix_fire": {
         "lower": [5, 190, 170],
         "upper": [15, 255, 255],
-        "voice": "Phoenix fire wall",
+        "voice": "Phoenix fire at {zone}",
         "display": "Phoenix Fire",
         "color": "#ff6b35",
         "min_area": 8,

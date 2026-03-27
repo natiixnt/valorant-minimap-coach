@@ -5,7 +5,7 @@ import yaml
 
 from src.audio.tts import TTSEngine
 from src.capture.screen import ScreenCapture
-from src.maps.callouts import enemies_to_callout
+from src.maps.callouts import enemies_to_callout, pos_to_zone
 from src.vision.ability_detector import AbilityDetector
 from src.vision.ai_analyzer import AIAnalyzer
 from src.vision.detector import MinimapDetector
@@ -119,8 +119,10 @@ class Coach:
 
             # Fast CV path: newly appeared abilities
             for ab in appeared:
-                self.tts.speak(ab.voice, priority=False)
-                self._ui(self._overlay.update_callout, ab.voice)  # type: ignore[union-attr]
+                zone = pos_to_zone(ab.position[0], ab.position[1], self.map_name)
+                text = ab.voice.format(zone=zone)
+                self.tts.speak(text, priority=False)
+                self._ui(self._overlay.update_callout, text)  # type: ignore[union-attr]
 
             # AI path: periodic deep analysis with ability context
             if self.ai and result.enemy_count > 0 and self.ai.should_analyze():
