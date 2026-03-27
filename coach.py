@@ -112,6 +112,7 @@ class Coach:
         self._stack_frames: dict = {}
         self._stack_warned: set  = set()
         self._spike_plant_time   = 0.0
+        self._spike_armed        = False   # beep detector armed (candidate detected)
         self._recent_ai_callouts: List[str] = []
         self._audio_round_ended  = False
         self._running            = True
@@ -159,6 +160,7 @@ class Coach:
         self._stack_frames.clear()
         self._stack_warned.clear()
         self._audio_round_ended = False
+        self._spike_armed = False
         ult_warn = self.ult_tracker.update(self.round_state.round_num)
         if ult_warn:
             self._speak(ult_warn, ttl=12.0)          # informational, survives queue
@@ -316,19 +318,33 @@ class Coach:
                 max(0.1, min(0.9, 1.0 - avg_ey)),
             )
 
-        # -- Spike detection
-        spike_pos = self.spike_detector.update(frame)
-        if spike_pos is not None:
-            zone = pos_to_zone(spike_pos[0], spike_pos[1], self.map_name)
-            spike_text = f"Spike planted at {zone}! Rotate!"
-            self._speak(spike_text, priority=True)
-            self._ui(self._overlay.update_callout, spike_text)  # type: ignore[union-attr]
-            self._spike_plant_time = time.monotonic()
-            self.round_state.on_spike_planted()
-            self.economy.on_spike_planted()
-            # Arm audio spike beep detector
-            self.audio_coach.on_spike_planted(self._spike_plant_time)
-            self.defuse_advisor.reset()
+        # -- Spike detection (two-phase: minimap candidate → audio beep confirms)
+        self.spike_detector.update(frame)
+
+        if self.spike_detector.is_candidate and not self._spike_armed:
+            # Phase 1: minimap sees spike for 4+ frames -- arm beep detector silently.
+            # Do NOT announce yet: spike may be dropped on ground or mid-plant (cancelled).
+            self._spike_armed = True
+            self.audio_coach.arm_spike_audio()
+
+        if self._spike_armed and not self.spike_detector.is_planted:
+            # Phase 2: wait for first spike beep (audio-confirmed full plant)
+            # or fall back to minimap-only after timeout (audio disabled / missed)
+            audio_confirmed = self.audio_coach.spike_timer.has_started
+            timeout = self.spike_detector.candidate_timeout_reached
+            if audio_confirmed or timeout:
+                pos = self.spike_detector.candidate_pos or (0.5, 0.5)
+                zone = pos_to_zone(pos[0], pos[1], self.map_name)
+                spike_text = f"Spike planted at {zone}! Rotate!"
+                self._speak(spike_text, priority=True)
+                self._ui(self._overlay.update_callout, spike_text)  # type: ignore[union-attr]
+                self._spike_plant_time = time.monotonic()
+                self.round_state.on_spike_planted()
+                self.economy.on_spike_planted()
+                self.audio_coach.on_spike_planted(self._spike_plant_time)
+                self.defuse_advisor.reset()
+                self.spike_detector.confirm_planted(pos)
+                self._spike_armed = False
 
         # -- Retake advisor (post-plant phase)
         if self.spike_detector.is_planted and self.spike_detector.planted_pos and team:
@@ -417,12 +433,13 @@ class Coach:
                 self._stack_frames.pop(z, None)
                 self._stack_warned.discard(z)
 
-        # -- Ability callouts
+        # -- Ability callouts (voice=None means overlay-only, no TTS)
         for ab in appeared:
             zone = pos_to_zone(ab.position[0], ab.position[1], self.map_name)
-            txt = ab.voice.format(zone=zone)
-            self._speak(txt, ttl=4.0)
-            self._ui(self._overlay.update_callout, txt)  # type: ignore[union-attr]
+            if ab.voice:
+                txt = ab.voice.format(zone=zone)
+                self._speak(txt, ttl=4.0)
+                self._ui(self._overlay.update_callout, txt)  # type: ignore[union-attr]
 
         # -- AI deep analysis
         if self.ai and result.enemy_count > 0 and self.ai.should_analyze():

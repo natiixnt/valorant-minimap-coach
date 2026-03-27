@@ -37,6 +37,7 @@ from src.audio.round_audio import RoundAudioDetector
 from src.audio.spike_audio import SpikeBeepDetector, SpikeTimer, DefuseSoundDetector
 from src.maps.callouts import pos_to_zone
 from src.maps.surfaces import get_surface, surface_matches, surface_to_voice
+from src.game.enemy_agents import EnemyAgentTracker
 
 # Model path (relative to cwd = project root)
 _MODEL_PATH = "data/footstep_model.pkl"
@@ -113,6 +114,7 @@ class AudioCoach:
         self._player_facing: float = 0.0
         self._player_pos: Tuple[float, float] = (0.5, 0.5)
         self._map_name: str = "unknown"
+        self._enemy_agents: Optional[EnemyAgentTracker] = None
 
     @property
     def player_facing(self) -> float:
@@ -145,9 +147,15 @@ class AudioCoach:
             self._map_name = value
 
     # ------------------------------------------------------------------
-    def on_spike_planted(self, plant_time: float) -> None:
-        """Arm spike audio detection. plant_time = time.monotonic() at plant moment."""
+    def arm_spike_audio(self) -> None:
+        """
+        Arm the beep detector when minimap shows a spike candidate (not yet confirmed).
+        Does NOT start the timer -- call on_spike_planted() when plant is audio-confirmed.
+        """
         self._spike_beep.arm()
+
+    def on_spike_planted(self, plant_time: float) -> None:
+        """Confirm spike planted -- start timer and arm defuse detection."""
         self._spike_timer.on_spike_planted(plant_time)
         self._defuse_sound.arm()
 

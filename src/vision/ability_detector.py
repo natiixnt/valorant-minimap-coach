@@ -10,7 +10,7 @@ disappearance, so the coach speaks only when something changes.
 """
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -21,7 +21,7 @@ from src.capture.screen import MinimapFrame
 @dataclass
 class DetectedAbility:
     kind: str
-    voice: str                          # text to speak on first detection
+    voice: Optional[str]                # text to speak on first detection; None = overlay-only
     display: str                        # short label for overlay
     color: str                          # hex color for overlay dot
     position: Tuple[float, float]       # normalized 0-1
@@ -33,7 +33,7 @@ _DEFAULTS: Dict[str, dict] = {
     "reyna_eye": {
         "lower": [145, 80, 140],
         "upper": [165, 255, 255],
-        "voice": "Reyna eye at {zone}, don't peek",
+        "voice": None,          # 3s, at kill location, whole team already knows
         "display": "Reyna Eye",
         "color": "#e040fb",
         "min_area": 6,
@@ -65,7 +65,7 @@ _DEFAULTS: Dict[str, dict] = {
     "sova_bolt": {
         "lower": [12, 170, 170],
         "upper": [28, 255, 255],
-        "voice": "Sova bolt at {zone}",
+        "voice": None,          # Shock Dart: very brief, visible on screen
         "display": "Sova Bolt",
         "color": "#f77f00",
         "min_area": 5,
@@ -73,7 +73,7 @@ _DEFAULTS: Dict[str, dict] = {
     "phoenix_fire": {
         "lower": [5, 190, 170],
         "upper": [15, 255, 255],
-        "voice": "Phoenix fire at {zone}",
+        "voice": None,          # Hot Hands: ~8s, locally visible, team sees Phoenix use it
         "display": "Phoenix Fire",
         "color": "#ff6b35",
         "min_area": 8,
@@ -91,7 +91,7 @@ _DEFAULTS: Dict[str, dict] = {
     "skye_guide": {
         "lower": [158, 130, 150],
         "upper": [172, 255, 255],
-        "voice": "Skye guide at {zone}",
+        "voice": None,          # ~4s, controlled by Skye, team knows it's active
         "display": "Skye Guide",
         "color": "#26c6da",
         "min_area": 5,

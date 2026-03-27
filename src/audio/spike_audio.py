@@ -175,6 +175,11 @@ class SpikeTimer:
         self._last_ibi = None
         self._ibi_confidence = 0.0
 
+    @property
+    def has_started(self) -> bool:
+        """True once the first spike beep has been detected (reliable plant confirmation)."""
+        return len(self._beep_times) > 0
+
     def on_spike_planted(self, plant_time: float) -> None:
         """Register plant time (time.monotonic() from coach.py)."""
         self._plant_time = plant_time
