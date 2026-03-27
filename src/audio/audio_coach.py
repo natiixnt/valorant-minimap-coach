@@ -31,6 +31,7 @@ from src.audio.capture import AudioCapture, SAMPLE_RATE
 from src.audio.footstep_detector import FootstepDetector, FootstepEvent
 from src.audio.direction_estimator import DirectionEstimator, audio_az_to_map_direction, direction_to_map_pos
 from src.audio.agent_classifier import AgentClassifier
+from src.audio.round_audio import RoundAudioDetector
 from src.maps.callouts import pos_to_zone
 from src.maps.surfaces import get_surface, surface_matches, surface_to_voice
 
@@ -91,6 +92,9 @@ class AudioCoach:
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
+        # Round audio event detector -- callbacks wired by coach.py
+        self.round_audio = RoundAudioDetector()
+
         # Shared state updated by coach.py main loop
         self.player_facing: float = 0.0          # degrees, updated each frame
         self.player_pos: Tuple[float, float] = (0.5, 0.5)
@@ -126,17 +130,19 @@ class AudioCoach:
 
     # ------------------------------------------------------------------
     def _analysis_loop(self) -> None:
-        """Background thread: detect footsteps and push AudioFinding to queue."""
-        prev_sample_count = 0
+        """Background thread: detect footsteps and round audio events."""
         while self._running:
             stereo = self._capture.read(n_samples=_ANALYSIS_WINDOW * 2)
             if stereo is None:
                 time.sleep(0.05)
                 continue
 
-            # FootstepDetector works on mono but needs stereo for balance
             mono = (stereo[0] + stereo[1]) * 0.5
-            # Feed only the new half to avoid re-processing
+
+            # Round audio event detection (round start horn, win/loss jingle)
+            self.round_audio.process(mono)
+
+            # Footstep detection
             events: List[FootstepEvent] = self._footstep_det.process(stereo)
 
             for event in events:
