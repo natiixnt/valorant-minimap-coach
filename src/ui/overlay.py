@@ -405,8 +405,12 @@ class ColorPickerDialog(ctk.CTkToplevel):
 
     def _confirm(self) -> None:
         r, g, b = colorsys.hsv_to_rgb(self._hue, self._sat, self._val)
-        self._on_confirm(_rgb_to_hex(int(r*255), int(g*255), int(b*255)))
+        hex_val = _rgb_to_hex(int(r*255), int(g*255), int(b*255))
         self.destroy()
+        try:
+            self._on_confirm(hex_val)
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -677,6 +681,15 @@ class SettingsWindow(ctk.CTkToplevel):
             corner_radius=2, command=_toggle_show,
         ).pack(side="left", padx=(4, 0))
 
+        # Test button -- makes a real 1-token API call in a background thread
+        self._test_btn = ctk.CTkButton(
+            row, text="TEST", width=46, height=28,
+            fg_color=c["panel"], text_color=c["dim"],
+            hover_color=c["accent"], font=("Consolas", 9, "bold"),
+            corner_radius=2, command=self._test_api_key,
+        )
+        self._test_btn.pack(side="left", padx=(4, 0))
+
         # Prefill from saved settings or current env
         import os as _os
         saved_key = load_settings().get("anthropic_api_key", "") or _os.environ.get("ANTHROPIC_API_KEY", "")
@@ -684,22 +697,59 @@ class SettingsWindow(ctk.CTkToplevel):
             self._api_key_entry.insert(0, saved_key)
 
         # Status label
-        self._key_status = ctk.CTkLabel(parent, text="", text_color=c["dim"],
-                                        font=("Consolas", 8))
+        self._key_status = ctk.CTkLabel(parent, text="  no key -- AI callouts disabled",
+                                        text_color="#f44336", font=("Consolas", 8))
         self._key_status.pack(anchor="w", padx=14, pady=(0, 4))
-        self._update_key_status()
+        self._refresh_key_status()
+        self._api_key_entry.bind("<KeyRelease>", lambda _: self._refresh_key_status())
 
-    def _update_key_status(self) -> None:
+    def _refresh_key_status(self) -> None:
+        """Format-only check (instant, no network)."""
         if not hasattr(self, "_api_key_entry") or not hasattr(self, "_key_status"):
             return
         val = self._api_key_entry.get().strip()
-        if val.startswith("sk-ant-") and len(val) > 20:
-            self._key_status.configure(text="  key looks valid", text_color="#4caf50")
-        elif val:
-            self._key_status.configure(text="  key format unexpected", text_color="#ff9800")
+        if not val:
+            self._key_status.configure(text="  no key -- AI callouts disabled",
+                                       text_color="#f44336")
+        elif val.startswith("sk-ant-") and len(val) > 20:
+            self._key_status.configure(text="  key entered -- click TEST to verify",
+                                       text_color="#ff9800")
         else:
-            self._key_status.configure(text="  no key -- AI callouts disabled", text_color="#f44336")
-        self._api_key_entry.bind("<KeyRelease>", lambda _: self._update_key_status())
+            self._key_status.configure(text="  unexpected format (should start with sk-ant-)",
+                                       text_color="#ff9800")
+
+    def _test_api_key(self) -> None:
+        """Send a real 1-token request to Anthropic to verify the key works."""
+        import threading as _t
+        key = self._api_key_entry.get().strip()
+        if not key:
+            self._key_status.configure(text="  enter a key first", text_color="#ff9800")
+            return
+        self._key_status.configure(text="  testing...", text_color="#ff9800")
+        self._test_btn.configure(state="disabled")
+
+        def _run():
+            try:
+                import anthropic
+                client = anthropic.Anthropic(api_key=key)
+                client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=1,
+                    messages=[{"role": "user", "content": "hi"}],
+                )
+                result = ("  key valid", "#4caf50")
+            except Exception as e:
+                msg = str(e)
+                if "401" in msg or "authentication" in msg.lower() or "invalid" in msg.lower():
+                    result = ("  invalid key", "#f44336")
+                elif "429" in msg:
+                    result = ("  rate limited -- key probably valid", "#ff9800")
+                else:
+                    result = (f"  error: {msg[:50]}", "#ff9800")
+            self.after(0, lambda: self._key_status.configure(text=result[0], text_color=result[1]))
+            self.after(0, lambda: self._test_btn.configure(state="normal"))
+
+        _t.Thread(target=_run, daemon=True).start()
 
     # ---- voice ----
 
@@ -765,6 +815,8 @@ class SettingsWindow(ctk.CTkToplevel):
         return out or voices
 
     def _refresh_voice_list(self) -> None:
+        if not hasattr(self, "_voice_combo") or not hasattr(self, "_lang_filter"):
+            return
         filtered = self._filter_voices(self._master._voice_options,
                                        self._lang_filter.get())
         self._filtered_voices = filtered
@@ -774,8 +826,10 @@ class SettingsWindow(ctk.CTkToplevel):
             self._voice_combo.set(names[0])
 
     def _get_selected_voice_id(self) -> str:
+        if not self._voice_combo:
+            return self._master._current_voice_id
         name = self._voice_combo.get()
-        for v in self._filtered_voices:
+        for v in (self._filtered_voices or []):
             if v["name"] == name:
                 return v["id"]
         return self._master._current_voice_id
@@ -867,6 +921,9 @@ class SettingsWindow(ctk.CTkToplevel):
         self._rows = {}
         self._preset_btns = {}
         self._lang_btns = {}
+        self._voice_combo = None
+        self._lang_filter = None
+        self._filtered_voices = []
         self.configure(fg_color=colors["bg"])
         self._build()
         if highlight:
@@ -1257,6 +1314,10 @@ class OverlayWindow(ctk.CTk):
             lbl.configure(text_color=c["dim"])
         self._callout_lbl.configure(text_color=c["text"])
         self._ai_lbl.configure(text_color=c["dim"])
+        self._fb_up.configure(fg_color=c["panel"], text_color=c["dim"])
+        self._fb_dn.configure(fg_color=c["panel"], text_color=c["dim"])
+        self._defuse_title.configure(text_color=c["dim"])
+        self._defuse_cv.configure(bg=c["canvas_bg"])
         self._bottombar.configure(fg_color=c["title"])
         self._mute_btn.configure(
             fg_color=c["accent"] if not self._muted else c["panel"],
@@ -1347,9 +1408,14 @@ class OverlayWindow(ctk.CTk):
     # Tick loop
     # -----------------------------------------------------------------------
     def _schedule_tick(self) -> None:
-        live = self._tracker.tick(time.time())
-        self._draw_canvas(live)
-        self._refresh_history()
+        if not self.winfo_exists():
+            return
+        try:
+            live = self._tracker.tick(time.time())
+            self._draw_canvas(live)
+            self._refresh_history()
+        except Exception:
+            pass
         self.after(100, self._schedule_tick)
 
     def _draw_canvas(self, enemies: List[TrackedEnemy]) -> None:
