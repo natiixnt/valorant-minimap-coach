@@ -41,6 +41,8 @@ class OverlayWindow(ctk.CTk):
         self._tracker = EnemyTracker(fade_after=fade_after)
         self._drag: dict = {}
         self._visible = True
+        # list of {"display": str, "color": hex, "position": (x,y)}
+        self._abilities: List[dict] = []
 
         self._setup_window()
         self._build_ui()
@@ -69,6 +71,7 @@ class OverlayWindow(ctk.CTk):
         self._build_map_panel()
         self._build_canvas_panel()
         self._build_enemy_panel()
+        self._build_utility_panel()
         self._build_callout_panel()
         self._build_ai_panel()
         self._build_bottombar()
@@ -125,6 +128,18 @@ class OverlayWindow(ctk.CTk):
         self._enemy_dots = ctk.CTkLabel(row, text="○ ○ ○ ○ ○", text_color=C_DIM,
                                          font=("Consolas", 12))
         self._enemy_dots.pack(side="left", padx=(8, 0), pady=(6, 0))
+
+    def _build_utility_panel(self) -> None:
+        p = self._panel("UTILITY & AGENTS")
+        # Up to 4 slots, each a colored dot + label
+        self._util_rows: List[ctk.CTkLabel] = []
+        for _ in range(4):
+            lbl = ctk.CTkLabel(p, text="", text_color=C_DIM,
+                               font=("Consolas", 9), anchor="w")
+            lbl.pack(fill="x", padx=10, pady=0)
+            self._util_rows.append(lbl)
+        # Spacer to keep panel from collapsing when empty
+        ctk.CTkLabel(p, text="", height=2).pack()
 
     def _build_callout_panel(self) -> None:
         p = self._panel("CALLOUT")
@@ -206,6 +221,16 @@ class OverlayWindow(ctk.CTk):
             c.create_line(i, 0, i, s, fill=C_GRID, width=1)
             c.create_line(0, i, s, i, fill=C_GRID, width=1)
 
+        # Ability dots (drawn first so enemies/player render on top)
+        for ab in self._abilities:
+            ax = int(ab["position"][0] * s)
+            ay = int(ab["position"][1] * s)
+            color = ab.get("color", "#ffffff")
+            c.create_oval(ax - 4, ay - 4, ax + 4, ay + 4, fill=color, outline="")
+            # Small label tag
+            c.create_text(ax + 6, ay, text=ab["display"][:3].upper(),
+                          fill=color, font=("Consolas", 6), anchor="w")
+
         # Player dot (center)
         m = s // 2
         c.create_oval(m - 5, m - 5, m + 5, m + 5, fill=C_ACCENT, outline="")
@@ -241,3 +266,17 @@ class OverlayWindow(ctk.CTk):
 
     def update_ai(self, text: str) -> None:
         self._ai_lbl.configure(text=text)
+
+    def update_utility(self, abilities: List[dict]) -> None:
+        """
+        abilities: list of {"display": str, "color": hex, "position": (x,y)}
+        Shows up to 4 items in the utility panel with color-coded dots.
+        """
+        self._abilities = abilities
+        for i, row in enumerate(self._util_rows):
+            if i < len(abilities):
+                ab = abilities[i]
+                color = ab.get("color", C_DIM)
+                row.configure(text=f"◆ {ab['display']}", text_color=color)
+            else:
+                row.configure(text="")
