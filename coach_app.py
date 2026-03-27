@@ -65,6 +65,14 @@ def _set_app_icon(overlay) -> None:
 
 
 def main() -> None:
+    # Load API key from user_settings.json if not already in environment.
+    # This allows exe users to set their key via the Settings UI without a .env file.
+    from src.ui.overlay import load_settings as _load_settings
+    _saved = _load_settings()
+    _saved_key = _saved.get("anthropic_api_key", "")
+    if _saved_key and not os.environ.get("ANTHROPIC_API_KEY"):
+        os.environ["ANTHROPIC_API_KEY"] = _saved_key
+
     config = load_config()
     coach = Coach(config)
 

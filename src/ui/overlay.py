@@ -607,6 +607,8 @@ class SettingsWindow(ctk.CTkToplevel):
         scroll, content = self._make_scroll_area(c)
         scroll.pack(fill="both", expand=True)
 
+        self._build_api_key(content, c)
+        self._divider(content)
         self._build_voice(content, c)
         self._divider(content)
         self._build_lang(content, c)
@@ -643,6 +645,61 @@ class SettingsWindow(ctk.CTkToplevel):
             hover_color=c["dim"], font=("Consolas", 9, "bold"),
             corner_radius=2, command=lambda: self._apply_preset("VALORANT"),
         ).pack(side="right", padx=(0, 4), pady=10)
+
+    # ---- api key ----
+
+    def _build_api_key(self, parent, c: dict) -> None:
+        self._section(parent, "ANTHROPIC API KEY")
+        ctk.CTkLabel(parent, text="  required for AI callouts (claude.ai/settings → API Keys)",
+                     text_color=c["dim"], font=("Consolas", 8)).pack(
+            anchor="w", padx=14, pady=(0, 6))
+
+        row = tk.Frame(parent, bg=c["bg"])
+        row.pack(fill="x", padx=14, pady=(0, 4))
+
+        self._api_key_entry = ctk.CTkEntry(
+            row, width=260, height=28,
+            fg_color=c["panel"], border_color=c["dim"],
+            text_color=c["text"], font=("Consolas", 9),
+            show="*", placeholder_text="sk-ant-...",
+        )
+        self._api_key_entry.pack(side="left")
+
+        # Show/hide toggle
+        self._key_visible = False
+        def _toggle_show():
+            self._key_visible = not self._key_visible
+            self._api_key_entry.configure(show="" if self._key_visible else "*")
+        ctk.CTkButton(
+            row, text="👁", width=28, height=28,
+            fg_color=c["panel"], text_color=c["dim"],
+            hover_color=c["dim"], font=("Consolas", 10),
+            corner_radius=2, command=_toggle_show,
+        ).pack(side="left", padx=(4, 0))
+
+        # Prefill from saved settings or current env
+        import os as _os
+        saved_key = load_settings().get("anthropic_api_key", "") or _os.environ.get("ANTHROPIC_API_KEY", "")
+        if saved_key:
+            self._api_key_entry.insert(0, saved_key)
+
+        # Status label
+        self._key_status = ctk.CTkLabel(parent, text="", text_color=c["dim"],
+                                        font=("Consolas", 8))
+        self._key_status.pack(anchor="w", padx=14, pady=(0, 4))
+        self._update_key_status()
+
+    def _update_key_status(self) -> None:
+        if not hasattr(self, "_api_key_entry") or not hasattr(self, "_key_status"):
+            return
+        val = self._api_key_entry.get().strip()
+        if val.startswith("sk-ant-") and len(val) > 20:
+            self._key_status.configure(text="  key looks valid", text_color="#4caf50")
+        elif val:
+            self._key_status.configure(text="  key format unexpected", text_color="#ff9800")
+        else:
+            self._key_status.configure(text="  no key -- AI callouts disabled", text_color="#f44336")
+        self._api_key_entry.bind("<KeyRelease>", lambda _: self._update_key_status())
 
     # ---- voice ----
 
@@ -827,10 +884,18 @@ class SettingsWindow(ctk.CTkToplevel):
             if self._master.on_voice_change:
                 self._master.on_voice_change(voice_id)
 
+        api_key = ""
+        if hasattr(self, "_api_key_entry"):
+            api_key = self._api_key_entry.get().strip()
+            if api_key:
+                import os as _os
+                _os.environ["ANTHROPIC_API_KEY"] = api_key
+
         save_settings({
-            "colors":       new_c,
-            "voice_id":     voice_id,
-            "callout_lang": self._master._current_lang,
+            "colors":            new_c,
+            "voice_id":          voice_id,
+            "callout_lang":      self._master._current_lang,
+            "anthropic_api_key": api_key,
         })
         self.destroy()
 
