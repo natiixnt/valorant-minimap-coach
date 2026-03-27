@@ -2,13 +2,14 @@
 Ultimate ability charge estimation per enemy slot.
 
 Without game API access, we estimate ult charge from round count.
-Valorant ults charge via kills and orbs. Conservative assumption:
-  - Ult ready after ~6-8 rounds since last use (varies per agent).
-  - After using ult, it takes ~5-7 rounds to recharge (average across all ults).
-  - Orbs: 2 per map per round = ~2 points/round extra.
+Valorant ults charge via kills (1pt), deaths (1pt), orb pickups (1pt),
+spike plant (1pt), spike defuse completion (1pt).
+  - Ult point costs range from 6 (Reyna, Cypher) to 9 (Breach) -- varies per agent.
+  - Typical recharge: 3-5 rounds with average kill count + 1-2 orbs per half.
+  - Orbs: 2 per map per HALF (not per round) -- collected once, not respawning.
+    Fracture has 4 orbs per half.
 
-We track 5 enemy slots (indexed 0-4, matched to minimap detections over time)
-and announce when multiple enemies likely have ults.
+We warn conservatively (better to warn too early than miss).
 
 Limitations:
   - We don't know which agent each slot is playing.
@@ -16,20 +17,23 @@ Limitations:
   - This is a heuristic warning, not a guarantee.
 
 Callout examples:
-  "Caution: enemy ults likely charged -- round 7 since match start"
-  "Multiple enemies may have ultimates"
+  "Caution: enemy ults likely charged -- round 4"
+  "Enemy ults likely charged this round. Play safe."
 
 Trigger conditions:
-  - Announce at round 6, 9, 12 etc. (every 3 rounds after 6)
+  - First warn at round 4 (earliest realistic charge at 6pt cost + 1 orb)
+  - Re-warn every 4 rounds after detected use
   - Announce only once per round
 """
 from __future__ import annotations
 
 from typing import Optional
 
-# Rounds after which enemies are increasingly likely to have ults
-_ULT_WARN_ROUNDS = {6, 9, 12, 15, 18, 21, 24}
-_RECHARGE_ROUNDS = 6     # rounds per ult cycle after first use
+# Rounds after which enemies are increasingly likely to have ults.
+# Earliest: 6pt ult + 1 orb pickup = 5 kills needed, achievable by round 3-4.
+# Using round 4 as conservative first warning.
+_ULT_WARN_ROUNDS = {4, 7, 10, 13, 16, 19, 22}
+_RECHARGE_ROUNDS = 4     # rounds per ult cycle -- verified typical 3-5, using 4
 
 
 class UltTracker:
@@ -57,7 +61,7 @@ class UltTracker:
 
         if warn:
             self._last_warned_round = round_num
-            if round_num <= 8:
+            if round_num <= 5:
                 return "Caution: enemy ultimates may be charged. Check corners."
             else:
                 return "Enemy ults likely charged this round. Play safe."

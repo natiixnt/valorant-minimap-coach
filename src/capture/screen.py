@@ -1,4 +1,5 @@
 import time
+from typing import Optional
 
 import mss
 import numpy as np
@@ -17,8 +18,12 @@ class ScreenCapture:
         self.region = config["minimap"]["region"]
         self._sct = mss.mss()
 
-    def capture(self) -> MinimapFrame:
-        raw = self._sct.grab(self.region)
+    def capture(self) -> Optional[MinimapFrame]:
+        try:
+            raw = self._sct.grab(self.region)
+        except Exception as e:
+            print(f"[ScreenCapture] Grab failed: {e}")
+            return None
         # mss returns BGRA; drop alpha for OpenCV
         frame = np.array(raw)[:, :, :3]
         return MinimapFrame(data=frame, timestamp=time.time(), region=self.region)

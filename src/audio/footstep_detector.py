@@ -24,6 +24,7 @@ Surface classification via spectral centroid of the full spectrum (not bandpasse
 """
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -66,8 +67,9 @@ class FootstepDetector:
     def __init__(self) -> None:
         self._sos = butter(4, [_BP_LOW_HZ, _BP_HIGH_HZ],
                            btype="band", fs=SAMPLE_RATE, output="sos")
+        _max_history = int(5 * SAMPLE_RATE / HOP_SIZE)
         self._prev_spectrum: Optional[np.ndarray] = None
-        self._flux_history: List[float] = []
+        self._flux_history: deque = deque(maxlen=_max_history)
         self._last_onset_frame = -_MIN_ONSET_SAMPLES - 1
         self._frame_count = 0
         self._sample_counter = 0
@@ -103,11 +105,6 @@ class FootstepDetector:
                 flux = 0.0
             self._prev_spectrum = spectrum
             self._flux_history.append(flux)
-
-            # Keep history trimmed (last 5 s worth of frames)
-            max_history = int(5 * SAMPLE_RATE / HOP_SIZE)
-            if len(self._flux_history) > max_history:
-                self._flux_history = self._flux_history[-max_history:]
 
             # Adaptive threshold
             if len(self._flux_history) >= 10:

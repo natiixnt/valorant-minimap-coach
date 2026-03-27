@@ -210,15 +210,19 @@ class PlayDetector:
         curr_frame = list(self._history)[-1]
         if not prev_frame or not curr_frame:
             return {}
-        result = {}
+        result: Dict[int, Tuple[float, float]] = {}
+        used_prev: set = set()
         for i, (cx, cy) in enumerate(curr_frame):
-            best_j, best_d = -1, 1e9
+            best_j, best_d = -1, 0.1 ** 2  # only match within 0.1 units
             for j, (px, py) in enumerate(prev_frame):
+                if j in used_prev:
+                    continue
                 d = (cx - px) ** 2 + (cy - py) ** 2
                 if d < best_d:
                     best_d = d
                     best_j = j
-            if best_j >= 0 and best_d < 0.1 ** 2:
+            if best_j >= 0:
+                used_prev.add(best_j)
                 px, py = prev_frame[best_j]
                 result[i] = (cx - px, cy - py)
         return result

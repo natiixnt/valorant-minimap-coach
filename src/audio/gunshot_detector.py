@@ -181,10 +181,8 @@ class GunDetector:
             direction = "behind"
         elif -150 < az <= -90:
             direction = "left"
-        elif -90 < az <= -30:
-            direction = "front left"
         else:
-            direction = az > 0 and "rear right" or "rear left"
+            direction = "front left"
 
         gun_type = "suppressed shot" if suppressed else "shot"
         return f"{gun_type} {direction}, {dist}"

@@ -73,10 +73,7 @@ class ZoneTracker:
             if slot_id not in matched_slots:
                 if now - self._slots[slot_id].get("last_seen", now) > 2.0:
                     del self._slots[slot_id]
-                else:
-                    self._slots[slot_id]["last_seen"] = self._slots[slot_id].get(
-                        "last_seen", now
-                    )
+                # else: slot stays with unchanged last_seen (enemy temporarily out of view)
 
         # New enemies: create slots
         for ei in unmatched_enemies:

@@ -557,7 +557,11 @@ class SettingsWindow(ctk.CTkToplevel):
             def _ns_handler(ns_event):
                 dy = ns_event.scrollingDeltaY()
                 if dy:
-                    canvas.yview_scroll(int(-dy), "units")
+                    try:
+                        if canvas.winfo_exists():
+                            canvas.yview_scroll(int(-dy), "units")
+                    except Exception:
+                        pass
                 return ns_event
 
             self._ns_monitor = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
@@ -576,9 +580,11 @@ class SettingsWindow(ctk.CTkToplevel):
                 try:
                     from AppKit import NSEvent
                     NSEvent.removeMonitor_(self._ns_monitor)
+                    self._ns_monitor = None
                 except Exception:
                     pass
 
+        canvas.bind("<Destroy>", lambda _: _remove_monitor())
         self.bind("<Destroy>", lambda _: _remove_monitor())
 
         return outer, content
@@ -784,15 +790,30 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def _apply_preset(self, name: str) -> None:
         if name == "CUSTOM":
-            saved = self._saved_custom
-            if saved:
-                for key, row in self._rows.items():
-                    row.set(saved.get(key, self._master._c[key]))
+            new_c = self._saved_custom or self._master._c
         else:
-            for key, row in self._rows.items():
-                row.set(THEMES[name][key])
-        self._highlight_preset(name)
-        self._master.apply_colors(self._collect())
+            new_c = dict(THEMES[name])
+        self._master.apply_colors(new_c)
+        self._rebuild(new_c, highlight=name)
+
+    def _rebuild(self, colors: dict, highlight: str = "") -> None:
+        """Destroy and recreate settings content with new colors."""
+        if self._ns_monitor:
+            try:
+                from AppKit import NSEvent
+                NSEvent.removeMonitor_(self._ns_monitor)
+                self._ns_monitor = None
+            except Exception:
+                pass
+        for w in self.winfo_children():
+            w.destroy()
+        self._rows = {}
+        self._preset_btns = {}
+        self._lang_btns = {}
+        self.configure(fg_color=colors["bg"])
+        self._build()
+        if highlight:
+            self._highlight_preset(highlight)
 
     def _apply_and_save(self) -> None:
         new_c = self._collect()
@@ -1006,30 +1027,94 @@ class OverlayWindow(ctk.CTk):
                                          font=FONT_MONO, wraplength=218, justify="left")
         self._callout_lbl.pack(anchor="w", padx=10, pady=(0, 8))
 
+    # ── Defuse bar geometry constants ────────────────────────────────────────
+    _DB_W   = 220    # canvas width  (px)
+    _DB_H   = 20     # canvas height (px)
+    _DB_PAD = 10     # horizontal padding inside panel
+
     def _build_defuse_panel(self) -> None:
-        """Defuse progress tracker -- hidden until defuse sound is detected."""
+        """
+        Valorant-style defuse progress bar.
+        Hidden until defuse sound is detected.
+
+        Layout (matches Valorant HUD proportions):
+          ┌─────────────────────────────┐
+          │  DEFUSING          ~43%     │  ← label row
+          │ ▐████████▌·········▏        │  ← canvas bar
+          │          ↑ 50% tick         │
+          └─────────────────────────────┘
+        """
         c = self._c
-        p = self._panel("DEFUSE TRACKER")
+        p = self._panel("DEFUSING")
         self._defuse_panel = p
 
-        # Percentage label  e.g. "~43% defused if started now"
-        self._defuse_lbl = ctk.CTkLabel(
-            p, text="", text_color=c["safe"],
-            font=FONT_MONO_BOLD, anchor="w",
-        )
-        self._defuse_lbl.pack(fill="x", padx=10, pady=(0, 4))
+        # Single-row label: left="DEFUSING", right="~XX%"
+        lbl_row = ctk.CTkFrame(p, fg_color="transparent")
+        lbl_row.pack(fill="x", padx=self._DB_PAD, pady=(0, 3))
 
-        # Progress bar
-        self._defuse_bar = ctk.CTkProgressBar(
-            p, width=220, height=10, corner_radius=4,
-            fg_color=c["panel"], progress_color=c["safe"],
+        self._defuse_title = ctk.CTkLabel(
+            lbl_row, text="DEFUSING", text_color=c["dim"],
+            font=("Consolas", 8, "bold"), anchor="w",
         )
-        self._defuse_bar.set(0.0)
-        self._defuse_bar.pack(padx=10, pady=(0, 8))
+        self._defuse_title.pack(side="left")
 
-        # Start hidden
-        p.pack_forget()
+        self._defuse_pct_lbl = ctk.CTkLabel(
+            lbl_row, text="", text_color=c["safe"],
+            font=("Consolas", 9, "bold"), anchor="e",
+        )
+        self._defuse_pct_lbl.pack(side="right")
+
+        # Canvas bar -- drawn manually for Valorant-style mid-tick
+        self._defuse_cv = tk.Canvas(
+            p, width=self._DB_W, height=self._DB_H,
+            bg=c["bg"], highlightthickness=0,
+        )
+        self._defuse_cv.pack(padx=self._DB_PAD, pady=(0, 8))
+
         self._defuse_visible = False
+        p.pack_forget()
+
+    def _redraw_defuse_bar(self, pct: float) -> None:
+        """Redraw the canvas bar for the given fraction (0.0-1.0)."""
+        c   = self._c
+        cv  = self._defuse_cv
+        W, H = self._DB_W, self._DB_H
+        mid  = W // 2
+        fill_w = int(pct * W)
+
+        # Bar fill color: yellow-green → amber → red
+        if pct >= 0.85:
+            bar_color = c["enemy"]          # red
+        elif pct >= 0.5:
+            bar_color = "#f59e0b"           # amber
+        else:
+            bar_color = "#b8ca00"           # Valorant yellow-green
+
+        cv.delete("all")
+
+        # Trough (full width)
+        tr = H // 3
+        cv.create_rectangle(0, tr, W, H - tr,
+                            fill="#1c1f27", outline="")
+
+        # Filled portion
+        if fill_w > 0:
+            cv.create_rectangle(0, tr, fill_w, H - tr,
+                                fill=bar_color, outline="")
+
+        # 50% tick -- two-tone: bright line spanning full bar height
+        tick_color = "#ffffff" if pct < 0.5 else "#888888"
+        cv.create_line(mid, 0, mid, H, fill=tick_color, width=1)
+
+        # Small diamond at 50% mark (Valorant-style mid marker)
+        d = 4
+        cv.create_polygon(
+            mid, H // 2 - d,
+            mid + d, H // 2,
+            mid, H // 2 + d,
+            mid - d, H // 2,
+            fill=tick_color, outline="",
+        )
 
     def _build_ai_panel(self) -> None:
         c = self._c
@@ -1254,38 +1339,40 @@ class OverlayWindow(ctk.CTk):
 
     def update_defuse_progress(self, pct: float) -> None:
         """
-        Show/update the defuse progress panel.
-        pct: 0.0-1.0  (hypothetical fraction, not confirmed defuse)
+        Show/update the Valorant-style defuse bar.
+        pct: 0.0-1.0  (hypothetical fraction based on detected defuse hum)
         """
         c = self._c
         if not self._defuse_visible:
-            # Re-insert panel before AI panel (pack order matches build order)
             self._defuse_panel.pack(fill="x", before=self._ai_panel_ref)
             self._defuse_visible = True
 
-        pct_int = int(pct * 100)
         if pct >= 1.0:
-            label = "DEFUSE COMPLETE  (if started on hum)"
-            color = c["enemy"]
-        elif pct >= 0.9:
-            label = f"~{pct_int}% defused  -- peek now!"
-            color = c["enemy"]
-        elif pct >= 0.6:
-            label = f"~{pct_int}% defused  -- window closing"
-            color = "#f59e0b"   # amber
-        else:
-            label = f"~{pct_int}% defused if started on sound"
-            color = c["safe"]
+            self.hide_defuse_progress()
+            return
 
-        self._defuse_lbl.configure(text=label, text_color=color)
-        self._defuse_bar.configure(progress_color=color)
-        self._defuse_bar.set(pct)
+        pct_int = int(pct * 100)
+        if pct >= 0.85:
+            pct_label = f"~{pct_int}%  PEEK!"
+            lbl_color = c["enemy"]
+            title_color = c["enemy"]
+        elif pct >= 0.5:
+            pct_label = f"~{pct_int}%"
+            lbl_color = "#f59e0b"
+            title_color = "#f59e0b"
+        else:
+            pct_label = f"~{pct_int}%"
+            lbl_color = "#b8ca00"
+            title_color = c["dim"]
+
+        self._defuse_title.configure(text_color=title_color)
+        self._defuse_pct_lbl.configure(text=pct_label, text_color=lbl_color)
+        self._redraw_defuse_bar(pct)
 
     def hide_defuse_progress(self) -> None:
         if self._defuse_visible:
             self._defuse_panel.pack_forget()
             self._defuse_visible = False
-            self._defuse_bar.set(0.0)
 
     def update_ai(self, text: str, sample_ts: int = 0) -> None:
         self._ai_lbl.configure(text=text)

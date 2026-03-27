@@ -34,6 +34,7 @@ from src.audio.agent_classifier import AgentClassifier
 from src.audio.gunshot_detector import GunDetector, GunEvent
 from src.audio.noise_gate import NoiseGate
 from src.audio.round_audio import RoundAudioDetector
+from src.audio.spike_audio import SpikeBeepDetector, SpikeTimer, DefuseSoundDetector
 from src.maps.callouts import pos_to_zone
 from src.maps.surfaces import get_surface, surface_matches, surface_to_voice
 
@@ -84,6 +85,9 @@ class AudioCoach:
         self._gun_det       = GunDetector()
         self._direction_est = DirectionEstimator()
         self._classifier    = AgentClassifier()
+        self._spike_beep    = SpikeBeepDetector()
+        self._spike_timer   = SpikeTimer()
+        self._defuse_sound  = DefuseSoundDetector()
 
         # Try to load pre-trained model
         if os.path.exists(_MODEL_PATH):
@@ -99,10 +103,59 @@ class AudioCoach:
         # Round audio event detector -- callbacks wired by coach.py
         self.round_audio = RoundAudioDetector()
 
-        # Shared state updated by coach.py main loop
-        self.player_facing: float = 0.0          # degrees, updated each frame
-        self.player_pos: Tuple[float, float] = (0.5, 0.5)
-        self.map_name: str = "unknown"
+        # Spike audio: beep detector + timer + defuse tracker exposed to coach.py
+        self.spike_timer   = self._spike_timer
+        self.defuse_sound  = self._defuse_sound
+
+        # Shared state updated by coach.py main loop, read by audio thread.
+        # Lock protects writes/reads across thread boundary.
+        self._state_lock = threading.Lock()
+        self._player_facing: float = 0.0
+        self._player_pos: Tuple[float, float] = (0.5, 0.5)
+        self._map_name: str = "unknown"
+
+    @property
+    def player_facing(self) -> float:
+        with self._state_lock:
+            return self._player_facing
+
+    @player_facing.setter
+    def player_facing(self, value: float) -> None:
+        with self._state_lock:
+            self._player_facing = value
+
+    @property
+    def player_pos(self) -> Tuple[float, float]:
+        with self._state_lock:
+            return self._player_pos
+
+    @player_pos.setter
+    def player_pos(self, value: Tuple[float, float]) -> None:
+        with self._state_lock:
+            self._player_pos = value
+
+    @property
+    def map_name(self) -> str:
+        with self._state_lock:
+            return self._map_name
+
+    @map_name.setter
+    def map_name(self, value: str) -> None:
+        with self._state_lock:
+            self._map_name = value
+
+    # ------------------------------------------------------------------
+    def on_spike_planted(self, plant_time: float) -> None:
+        """Arm spike audio detection. plant_time = time.monotonic() at plant moment."""
+        self._spike_beep.arm()
+        self._spike_timer.on_spike_planted(plant_time)
+        self._defuse_sound.arm()
+
+    def on_spike_resolved(self) -> None:
+        """Disarm spike audio detection (defused or detonated)."""
+        self._spike_beep.reset()
+        self._spike_timer.reset()
+        self._defuse_sound.reset()
 
     # ------------------------------------------------------------------
     def start(self) -> None:
@@ -156,6 +209,13 @@ class AudioCoach:
             gated_r = self._noise_gate.process(stereo[1])
             gated_stereo = np.stack([gated_l, gated_r])
 
+            # Spike beep detection (on raw mono -- beeps are tonal, not gated)
+            for beep_t in self._spike_beep.process(mono):
+                self._spike_timer.add_beep(beep_t)
+
+            # Defuse hum detection (sustained tone, not a transient)
+            self._defuse_sound.process(mono)
+
             # Footstep detection on gated audio (false positives suppressed)
             events: List[FootstepEvent] = self._footstep_det.process(gated_stereo)
 
@@ -169,15 +229,21 @@ class AudioCoach:
     def _process_event(
         self, event: FootstepEvent, stereo: np.ndarray
     ) -> Optional[AudioFinding]:
+        # Snapshot shared state once to avoid repeated lock acquisitions
+        with self._state_lock:
+            player_facing = self._player_facing
+            player_pos    = self._player_pos
+            map_name      = self._map_name
+
         # -- Direction
         az, dist_m = self._direction_est.estimate(stereo, event.amplitude_db)
-        map_dir = audio_az_to_map_direction(az, self.player_facing)
+        map_dir = audio_az_to_map_direction(az, player_facing)
 
-        scale = _M_PER_UNIT.get(self.map_name.lower(), _DEFAULT_M_PER_UNIT)
+        scale = _M_PER_UNIT.get(map_name.lower(), _DEFAULT_M_PER_UNIT)
         est_pos = (0.5, 0.5)
-        if self.player_pos != (0.5, 0.5):
+        if player_pos != (0.5, 0.5):
             est_pos = direction_to_map_pos(
-                self.player_pos, map_dir, dist_m, scale_m_per_unit=scale
+                player_pos, map_dir, dist_m, scale_m_per_unit=scale
             )
 
         # -- Shoe type classification
@@ -196,14 +262,14 @@ class AudioCoach:
 
         # -- Zone name from estimated map position
         zone = ""
-        if self.map_name != "unknown":
-            zone = pos_to_zone(est_pos[0], est_pos[1], self.map_name)
+        if map_name != "unknown":
+            zone = pos_to_zone(est_pos[0], est_pos[1], map_name)
 
         # -- Surface cross-check against map
-        map_surface = get_surface(est_pos[0], est_pos[1], self.map_name)
+        map_surface = get_surface(est_pos[0], est_pos[1], map_name)
         surface = event.surface
         surface_hint = ""
-        if not surface_matches(surface, map_surface) and self.map_name != "unknown":
+        if not surface_matches(surface, map_surface) and map_name != "unknown":
             conf *= 0.7
         if surface != "concrete":
             surface_hint = f" on {surface_to_voice(surface)}"

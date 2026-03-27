@@ -74,7 +74,7 @@ class Heatmap:
             return 0.0
         total = 0.0
         for r, v in rounds.items():
-            age = self._current_round - r   # 0 = this round
+            age = max(0, self._current_round - r)   # 0 = this round; guard future rounds
             total += v * (_DECAY_PER_ROUND ** age)
         return float(min(1.0, total))
 

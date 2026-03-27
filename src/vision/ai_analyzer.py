@@ -1,75 +1,85 @@
 import base64
 import time
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import anthropic
 import cv2
 
 from src.capture.screen import MinimapFrame
 
+if TYPE_CHECKING:
+    from src.telemetry.collector import DataCollector
+
+
+_UNCHANGED_FALLBACK = 10.0  # fire at most every 10s when scene hasn't changed
+
 
 class AIAnalyzer:
-    def __init__(self, config: dict):
-        self.client = anthropic.Anthropic()
-        self.model: str = config["ai"]["model"]
-        self.interval: float = config["ai"]["analyze_interval"]
-        self._last_call: float = 0.0
+    def __init__(self, config: dict, collector: "Optional[DataCollector]" = None):
+        self.client   = anthropic.Anthropic()
+        self.model    = config["ai"]["model"]
+        self.interval = config["ai"]["analyze_interval"]
+        self._last_call:     float = 0.0
+        self._last_api_call: float = 0.0
+        self._last_state:    tuple = ()
+        self._last_sample_ts: int  = 0   # ts of last submitted sample, for feedback
+        self._collector = collector
 
     def should_analyze(self) -> bool:
         return time.time() - self._last_call >= self.interval
 
     def analyze(
         self,
-        frame: MinimapFrame,
-        enemy_count: int,
-        map_name: str = "unknown",
+        frame:            MinimapFrame,
+        enemy_count:      int,
+        map_name:         str = "unknown",
         active_abilities: Optional[List[str]] = None,
+        spike_active:     bool = False,
+        recent_callouts:  Optional[List[str]] = None,
     ) -> Optional[str]:
         if not self.should_analyze():
             return None
-        self._last_call = time.time()
 
-        _, buf = cv2.imencode(".jpg", frame.data, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        now = time.time()
+        self._last_call = now
+
+        state = (enemy_count, frozenset(active_abilities or []), spike_active)
+        if state == self._last_state and now - self._last_api_call < _UNCHANGED_FALLBACK:
+            return None
+
+        self._last_api_call = now
+        self._last_state    = state
+
+        _, buf  = cv2.imencode(".jpg", frame.data, [cv2.IMWRITE_JPEG_QUALITY, 85])
         img_b64 = base64.b64encode(buf).decode()
 
-        ability_ctx = ""
+        parts: List[str] = [f"Valorant minimap, map {map_name}, {enemy_count} enemies."]
+        if spike_active:
+            parts.append("Spike is planted.")
         if active_abilities:
-            ability_ctx = f" CV also sees these active: {', '.join(active_abilities)}."
-
-        prompt = (
-            f"Valorant minimap, map: {map_name}. "
-            f"CV detected ~{enemy_count} enemy blobs.{ability_ctx} "
-            "From the minimap image identify: "
-            "(1) which agent icons you see by their silhouette shape (both team and enemy), "
-            "(2) any utility visible: Reyna eyes, Sova recon bolts/drone, Viper walls/orbs, "
-            "Cypher cameras/tripwires, Killjoy turrets/nanoswarms/alarmbots, "
-            "Sage walls, Omen smokes, Brimstone smokes, Phoenix walls. "
-            "Give ONE tactical callout (max 12 words) naming the most dangerous agent or utility and their location. "
-            "Be specific. Examples: 'Jett on B, Reyna eye blocking A main', "
-            "'Sova drone mid, two enemies rotating B'. "
-            "Reply with the callout text only."
-        )
+            parts.append(f"Active: {', '.join(active_abilities)}.")
+        if recent_callouts:
+            parts.append(f"Recent: {'; '.join(recent_callouts[-2:])}.")
+        parts.append("One new tactical callout max 10 words (threat + location). Callout only.")
+        prompt = " ".join(parts)
 
         try:
             resp = self.client.messages.create(
                 model=self.model,
-                max_tokens=80,
+                max_tokens=30,
                 messages=[{
                     "role": "user",
                     "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/jpeg",
-                                "data": img_b64,
-                            },
-                        },
+                        {"type": "image", "source": {
+                            "type": "base64", "media_type": "image/jpeg", "data": img_b64,
+                        }},
                         {"type": "text", "text": prompt},
                     ],
                 }],
             )
-            return resp.content[0].text.strip()
+            callout = resp.content[0].text.strip()
+            self._last_sample_ts = int(now)
+            return callout
         except Exception as e:
             print(f"[AI] Error: {e}")
             return None

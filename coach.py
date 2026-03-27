@@ -340,15 +340,25 @@ class Coach:
                     spike_zone, self.map_name,
                 )
                 min_travel = travel[0][0] if travel else 5.0
-                defuse_advice = self.defuse_advisor.update(remaining, min_travel)
+                # half_defused: enemy stopped defusing at >50% -- only 3.5s needed next time
+                defuse_pct_now = self.audio_coach.defuse_sound.progress() or 0.0
+                defuse_advice = self.defuse_advisor.update(
+                    remaining, min_travel, half_defused=defuse_pct_now >= 0.5
+                )
                 if defuse_advice:
                     self._speak(defuse_advice, priority=True)
                     self._ui(self._overlay.update_callout, defuse_advice)  # type: ignore[union-attr]
 
-            # -- Defuse progress tracker (hypothetical -- based on detected defuse hum)
+            # -- Defuse progress tracker (wall-clock from detected defuse start click)
             defuse_pct = self.audio_coach.defuse_sound.progress()
             if defuse_pct is not None:
-                self._ui(self._overlay.update_defuse_progress, defuse_pct)  # type: ignore[union-attr]
+                if defuse_pct >= 1.0:
+                    # Timer expired -- hide bar and re-arm so a new E-press can be detected
+                    self._ui(self._overlay.hide_defuse_progress)  # type: ignore[union-attr]
+                    self.audio_coach.defuse_sound.reset()
+                    self.audio_coach.defuse_sound.arm()
+                else:
+                    self._ui(self._overlay.update_defuse_progress, defuse_pct)  # type: ignore[union-attr]
             else:
                 self._ui(self._overlay.hide_defuse_progress)  # type: ignore[union-attr]
 

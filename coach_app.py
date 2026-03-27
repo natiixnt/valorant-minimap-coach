@@ -18,46 +18,33 @@ from PIL import Image, ImageTk
 from coach import Coach, load_config
 from src.ui.overlay import OverlayWindow
 
-_ICON_PATH = os.path.join(os.path.dirname(__file__), "src", "ui", "app_icon.png")
-_ICON_SRC   = os.path.join(os.path.dirname(__file__), "src", "ui", "fa-solid-900.ttf")
-_ICON_BG    = "#0d0f14"
+_ICON_BG = "#0d0f14"
 
 
-def _system_accent() -> str:
-    """Return macOS system accent color as hex, fallback to app default."""
-    try:
-        from AppKit import NSColor
-        c = NSColor.controlAccentColor().colorUsingColorSpaceName_(
-            "NSCalibratedRGBColorSpace"
-        )
-        r = int(c.redComponent() * 255)
-        g = int(c.greenComponent() * 255)
-        b = int(c.blueComponent() * 255)
-        return f"#{r:02x}{g:02x}{b:02x}"
-    except Exception:
-        return "#e84057"
-
-
-def _build_icon(accent: str, size: int = 512) -> Image.Image:
-    """Generate crosshair icon with given accent color."""
+def _build_icon(size: int = 512) -> Image.Image:
+    """Generate monochrome crosshair icon for macOS template tinting."""
     from PIL import ImageDraw
     img  = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=size // 8, fill=_ICON_BG)
+    # Background occupies ~76% of canvas (like macOS system icons)
+    pad = size // 8
+    draw.rounded_rectangle([pad, pad, size - pad - 1, size - pad - 1],
+                           radius=size // 8, fill=_ICON_BG)
     cx, cy = size // 2, size // 2
-    lw  = size // 22
-    gap = size // 7
-    arm = size // 5
-    draw.rectangle([cx - lw // 2, cy - gap - arm, cx + lw // 2, cy - gap], fill=accent)
-    draw.rectangle([cx - lw // 2, cy + gap,       cx + lw // 2, cy + gap + arm], fill=accent)
-    draw.rectangle([cx - gap - arm, cy - lw // 2, cx - gap, cy + lw // 2], fill=accent)
-    draw.rectangle([cx + gap,       cy - lw // 2, cx + gap + arm, cy + lw // 2], fill=accent)
+    inner = size - 2 * pad
+    lw  = inner // 20
+    gap = inner // 5
+    arm = inner // 10
+    white = (255, 255, 255, 255)
+    draw.rectangle([cx - lw // 2, cy - gap - arm, cx + lw // 2, cy - gap], fill=white)
+    draw.rectangle([cx - lw // 2, cy + gap,       cx + lw // 2, cy + gap + arm], fill=white)
+    draw.rectangle([cx - gap - arm, cy - lw // 2, cx - gap, cy + lw // 2], fill=white)
+    draw.rectangle([cx + gap,       cy - lw // 2, cx + gap + arm, cy + lw // 2], fill=white)
     return img
 
 
 def _set_app_icon(overlay) -> None:
-    accent = _system_accent()
-    img    = _build_icon(accent)
+    img = _build_icon()
     try:
         photo = ImageTk.PhotoImage(img)
         overlay.iconphoto(True, photo)
@@ -71,6 +58,7 @@ def _set_app_icon(overlay) -> None:
         img.save(buf, format="PNG")
         data   = NSData.dataWithBytes_length_(buf.getvalue(), len(buf.getvalue()))
         ns_img = NSImage.alloc().initWithData_(data)
+        ns_img.setTemplate_(True)
         NSApplication.sharedApplication().setApplicationIconImage_(ns_img)
     except Exception:
         pass

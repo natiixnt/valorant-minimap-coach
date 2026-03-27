@@ -3,7 +3,7 @@ Round economy tracker and buy recommendation.
 
 Without game API access we estimate enemy economy from round results.
 Assumptions follow standard Valorant economy rules:
-  - Loss bonus: 1900 / 2400 / 2900 / 3400 / 3900 (streak-based, resets on win)
+  - Loss bonus: 1900 / 2400 / 2900 (streak-based, caps at 2900 from 3rd consecutive loss, resets on win)
   - Win bonus: 3000
   - Starting credits: 800 (pistol round), carry from previous
   - Eco pistol loadout: ~800-1200 creds
@@ -41,8 +41,8 @@ class EconomyStatus:
 _ECO_MAX   = 1800
 _FORCE_MAX = 3200
 
-# Loss bonus by streak (1 loss, 2 losses, 3+)
-_LOSS_BONUS = [1900, 2400, 2900, 3400, 3900]
+# Loss bonus by streak (1st loss, 2nd, 3rd+ -- verified Valorant Wiki; caps at 2900)
+_LOSS_BONUS = [1900, 2400, 2900]
 _WIN_BONUS  = 3000
 _ROUND_BONUS_KILL = 200
 _STARTING = 800    # round 1 pistol

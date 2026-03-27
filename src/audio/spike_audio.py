@@ -1,18 +1,25 @@
 """
 Spike defuse feasibility analysis from audio.
 
-Valorant spike facts (fixed values):
-  - Total timer: 45 seconds
-  - Defuse time: 7 seconds (no defuse kits in Valorant -- always 7s)
-  - Spike Rush mode: 20 seconds (detected separately)
+Valorant spike facts (verified):
+  - Total timer: 45 seconds (Spike Rush uses the same 45s detonation timer)
+  - Plant time: 4 seconds
+  - Defuse time: 7 seconds total; 3.5 s saves progress (half-defuse mechanic).
+    If defuse is interrupted after 3.5 s, only 3.5 s more are needed on next attempt.
+    No defuse kits in Valorant -- always 7 s for full defuse.
 
-The spike emits a characteristic tonal beep (~880 Hz center, ~60 ms duration)
-with decreasing inter-beep intervals (IBI) as the timer runs down.
-IBI ranges from ~2.0 s at plant to ~0.2 s near detonation.
+The spike beep rate escalates in discrete steps (community-documented, not officially
+published by Riot):
+  Elapsed 0-25 s  (remaining 45-20 s): ~1 beep/s  → IBI ≈ 1.0 s
+  Elapsed 25-35 s (remaining 20-10 s): ~2 beeps/s → IBI ≈ 0.5 s
+  Elapsed 35-40 s (remaining 10-5 s):  ~4 beeps/s → IBI ≈ 0.25 s
+  Elapsed 40-45 s (remaining 5-0 s):   ~8 beeps/s → IBI ≈ 0.125 s
+Exact beep frequency (Hz pitch) is not publicly documented by Riot.
 
 Time estimation model:
   Primary source : wall clock elapsed since _spike_plant_time (already in coach.py)
-  Secondary source: audio IBI → power-law estimate: remaining ≈ 26.0 * IBI^0.78
+  Secondary source: audio IBI → power-law estimate: remaining ≈ 45.0 * IBI^1.39
+    Calibrated from: IBI=1.0s→45s remaining, IBI=0.125s→~2.5s remaining.
   When both sources are available, wall clock wins; audio used to detect missed plant.
 
 Defuse feasibility:
@@ -22,11 +29,10 @@ Defuse feasibility:
 Advice is spoken at threshold crossings and time milestones (20 s, 10 s, 7 s).
 
 DefuseSoundDetector:
-  Detects the sustained defuse interaction hum (~350-1200 Hz, continuous for up to 7 s).
-  When detected, records onset_t (time.monotonic()).  onset_t is None when no active defuse.
-  Hypothetical defuse progress: pct = min(1.0, (now - onset_t) / 7.0)
-  This is NOT assumed to be a real defuse -- it answers "how far along would they be
-  if defuse started when we first heard that sound?" -- useful for deciding when to peek.
+  Detects the defuse START click (short mid-frequency onset when E is pressed on spike).
+  Once detected, runs a pure wall-clock 7 s timer.  No abort detection -- if defuse is
+  cancelled the bar just counts to 100% and hides.  If E is pressed again after the
+  cooldown window, on_spike_resolved() + arm() resets everything for a fresh detection.
 """
 from __future__ import annotations
 
@@ -44,7 +50,7 @@ _BEEP_LOW_HZ   = 700    # bandpass low edge  (Hz)
 _BEEP_HIGH_HZ  = 2000   # bandpass high edge (Hz)
 _BEEP_DUR_S    = 0.06   # beep duration ~60 ms
 _BEEP_WIN      = int(_BEEP_DUR_S * SAMPLE_RATE)   # samples per analysis window
-_MIN_IBI_S     = 0.12   # minimum allowed IBI (debounce)
+_MIN_IBI_S     = 0.08   # debounce: half of minimum real IBI (0.125 s at 8 bps)
 _BEEP_THRESH   = 6.0    # short-term RMS / long-term RMS ratio to declare a beep
 
 # ── Spike timer constants ────────────────────────────────────────────────────
@@ -54,22 +60,33 @@ _DEFUSE_MARGIN = 0.5    # safety margin added to DEFUSE_TIME for callouts
 
 # ── IBI → remaining time model ───────────────────────────────────────────────
 # Power-law fit: remaining ≈ _IBI_COEFF * IBI ^ _IBI_EXP
-# Calibration:  IBI=2.0s → 45s remaining,  IBI=0.2s → ~1s remaining
-_IBI_COEFF = 26.0
-_IBI_EXP   = 0.78
+# Calibration (from community-documented beep rate steps):
+#   IBI=1.0s  → 45s remaining  (1 bps phase, elapsed 0-25s)
+#   IBI=0.125s → ~2.5s remaining (8 bps phase, elapsed 40-45s)
+# Fit: a=45, b=log(2.5/45)/log(0.125/1.0) = log(0.0556)/log(0.125) ≈ 1.39
+_IBI_COEFF = 45.0
+_IBI_EXP   = 1.39
+
+# ── IBI debounce ─────────────────────────────────────────────────────────────
+# Minimum IBI at max beep rate is 0.125 s (8 bps). Debounce at half that.
 
 # ── Defuse advice milestones ─────────────────────────────────────────────────
 _ADVICE_THRESHOLDS = [20.0, 10.0, 7.0 + _DEFUSE_MARGIN]   # seconds remaining
 
 
-# ── Defuse hum audio characteristics ────────────────────────────────────────
-_DEFUSE_LOW_HZ   = 350    # bandpass low edge  (Hz) -- defuse interaction hum
-_DEFUSE_HIGH_HZ  = 1200   # bandpass high edge (Hz)
-_DEFUSE_WIN_S    = 0.02   # analysis window 20 ms
+# ── Defuse start-sound characteristics ──────────────────────────────────────
+# When a player presses E on the spike, Valorant plays a short mid-frequency
+# click/activation sound (~500-1500 Hz, ~40-80 ms).  We detect that single
+# onset and then run a pure wall-clock 7 s timer.
+# No "abort" detection from audio -- if defuse is cancelled the timer just
+# reaches 100% and the bar hides.  If defuse restarts (new press of E), reset()
+# is called externally and a new onset can be detected.
+_DEFUSE_LOW_HZ   = 500    # bandpass low edge  (Hz)
+_DEFUSE_HIGH_HZ  = 1500   # bandpass high edge (Hz)
+_DEFUSE_WIN_S    = 0.04   # analysis window 40 ms
 _DEFUSE_WIN      = int(_DEFUSE_WIN_S * SAMPLE_RATE)
-_DEFUSE_THRESH   = 3.0    # short RMS / long RMS to declare active defuse hum
-_DEFUSE_CONFIRM  = 15     # consecutive windows required to lock onset (~300 ms)
-_DEFUSE_DROP     = 6      # consecutive quiet windows to declare abort
+_DEFUSE_THRESH   = 5.0    # short RMS / long RMS ratio to fire onset
+_DEFUSE_COOLDOWN = 8.0    # s -- re-arm only after this much time (prevent re-trigger)
 
 # ── Butterworth bandpass (SOS) ───────────────────────────────────────────────
 def _make_bandpass(lo: int, hi: int):
@@ -214,78 +231,80 @@ class SpikeTimer:
 
 class DefuseSoundDetector:
     """
-    Detects the defuse interaction hum (sustained ~350-1200 Hz tone for up to 7 s).
+    Detects the defuse START sound (short click when E is pressed on the spike).
 
-    onset_t is set to time.monotonic() when sustained energy is first confirmed.
-    It stays set until the hum disappears (defuse aborted) or reset() is called.
+    On detection, onset_t is set to time.monotonic() and the detector goes deaf
+    for _DEFUSE_COOLDOWN seconds (prevents re-triggering on echoes).
+    onset_t is cleared only by reset() -- called from coach.py when round ends
+    or when on_spike_resolved() fires.
 
-    Thread note: onset_t is a plain float attribute.  CPython's GIL makes float
-    reads/writes from another thread safe for this read-only access pattern.
+    progress() returns wall-clock fraction (0.0-1.0) of the 7 s defuse window.
+    Returns None when no defuse start has been detected this plant phase.
+
+    Thread note: onset_t is a plain float/None attribute; CPython GIL makes
+    reads from the main thread safe.
     """
 
     def __init__(self) -> None:
         self._long_rms: float = 1e-6
-        self._above_count: int = 0    # consecutive windows above threshold
-        self._below_count: int = 0    # consecutive windows below (for abort detection)
         self._armed: bool = False
+        self._last_onset_t: float = 0.0   # prevents cooldown re-trigger
         # Public: read by audio_coach → coach.py → overlay
         self.onset_t: Optional[float] = None
 
     def reset(self) -> None:
         self._long_rms = 1e-6
-        self._above_count = 0
-        self._below_count = 0
         self._armed = False
+        self._last_onset_t = 0.0
         self.onset_t = None
 
     def arm(self) -> None:
-        """Call when spike is planted."""
+        """Call when spike is planted -- start listening for defuse start."""
         self._armed = True
 
     def process(self, mono: np.ndarray) -> None:
         """
-        Update state from one audio chunk.
-        Mutates self.onset_t -- no return value needed.
+        Scan one audio chunk for the defuse start onset.
+        Sets self.onset_t on first detection; ignores audio for _DEFUSE_COOLDOWN s after.
         """
         if not self._armed or len(mono) < _DEFUSE_WIN:
             return
 
+        # If already within cooldown window, skip (onset already locked)
+        now = time.monotonic()
+        if now - self._last_onset_t < _DEFUSE_COOLDOWN:
+            return
+
         filtered = sosfilt(_DEFUSE_BP_SOS, mono)
 
-        # Process chunk in _DEFUSE_WIN windows
-        for start in range(0, len(filtered) - _DEFUSE_WIN + 1, _DEFUSE_WIN):
+        step = _DEFUSE_WIN // 2
+        for start in range(0, len(filtered) - _DEFUSE_WIN + 1, step):
             chunk = filtered[start : start + _DEFUSE_WIN]
             short_rms = float(np.sqrt(np.mean(chunk ** 2)) + 1e-9)
 
-            # Slow background update
-            alpha = 0.005
-            self._long_rms = (1 - alpha) * self._long_rms + alpha * short_rms
+            # Update slow background
+            self._long_rms = 0.995 * self._long_rms + 0.005 * short_rms
 
             ratio = short_rms / (self._long_rms + 1e-9)
-
             if ratio >= _DEFUSE_THRESH:
-                self._above_count += 1
-                self._below_count = 0
-                # Lock onset once confirmed
-                if self._above_count == _DEFUSE_CONFIRM and self.onset_t is None:
-                    # Back-date onset by the confirmation window duration
-                    self.onset_t = time.monotonic() - _DEFUSE_WIN_S * _DEFUSE_CONFIRM
-            else:
-                self._below_count += 1
-                if self._below_count >= _DEFUSE_DROP:
-                    # Hum stopped -- defuse aborted (or complete)
-                    self._above_count = 0
-                    self._below_count = 0
-                    self.onset_t = None
+                # Onset detected -- record and lock
+                self.onset_t = now - (len(mono) - start) / SAMPLE_RATE
+                self._last_onset_t = now
+                return   # one onset per chunk
 
     def progress(self) -> Optional[float]:
         """
-        Returns hypothetical defuse fraction 0.0-1.0 (None if no active defuse hum).
-        1.0 means 7 s of continuous hum elapsed -- they would be done.
+        Returns wall-clock defuse fraction 0.0-1.0, or None if not detected.
+        Caller (coach.py) hides the UI and calls reset() when round ends.
         """
         if self.onset_t is None:
             return None
         return min(1.0, (time.monotonic() - self.onset_t) / _DEFUSE_TIME)
+
+
+# Half-defuse time (verified Valorant mechanic):
+# After 3.5 s of defuse, progress is saved. If interrupted, only 3.5 s more needed.
+_HALF_DEFUSE_TIME = _DEFUSE_TIME / 2.0   # 3.5 s
 
 
 class DefuseAdvisor:
@@ -300,6 +319,8 @@ class DefuseAdvisor:
       - When remaining drops below DEFUSE_TIME + travel + margin: "No time, hold!"
       - Milestone callouts at 20s, 10s, and 7s remaining (once each)
       - Feasibility flip callout when go/no-go status changes
+      - half_defused flag: if enemy already has half-defuse saved (3.5s done),
+        only 3.5s more are needed -- window is larger on restart.
     """
 
     def __init__(self) -> None:
@@ -317,15 +338,20 @@ class DefuseAdvisor:
         self,
         remaining: float,
         travel_time: float,
+        half_defused: bool = False,
     ) -> Optional[str]:
         """
-        remaining   : seconds left on spike (from SpikeTimer.remaining())
-        travel_time : estimated seconds to reach spike (from retake_advisor travel data)
+        remaining     : seconds left on spike (from SpikeTimer.remaining())
+        travel_time   : estimated seconds to reach spike
+        half_defused  : True if defuse bar has passed 50% (3.5 s saved on enemy side)
+                        -- reduces required defuse time to 3.5 s on next attempt
 
         Returns voice callout string or None.
         """
         now = time.monotonic()
-        needed = _DEFUSE_TIME + travel_time + _DEFUSE_MARGIN
+        # If half-defuse progress was saved, enemy only needs 3.5s more to complete
+        effective_defuse = _HALF_DEFUSE_TIME if half_defused else _DEFUSE_TIME
+        needed = effective_defuse + travel_time + _DEFUSE_MARGIN
         feasible = remaining > needed
 
         callout: Optional[str] = None

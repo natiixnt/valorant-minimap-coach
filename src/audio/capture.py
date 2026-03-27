@@ -132,7 +132,11 @@ class AudioCapture:
             if any(k in ml for k in keywords):
                 return m
 
-        # Fallback: default microphone (will capture mic audio instead of game)
+        # Fallback: default microphone -- this captures mic audio, NOT game audio.
+        # Coach footstep/gunshot detection will be unreliable. Set audio_coach.device
+        # in config.yaml to a loopback device (BlackHole on macOS, Stereo Mix on Windows).
+        print("[AudioCapture] WARNING: No loopback device found. Falling back to default "
+              "microphone -- audio analysis will use mic input, not game audio.")
         try:
             return sc.default_microphone()
         except Exception:
