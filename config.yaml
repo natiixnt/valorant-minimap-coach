@@ -24,4 +24,10 @@ audio:
   rate: 160
   cooldown: 2.0
 
-map: "ascent"
+# Leave map_override as null for automatic map detection.
+# Set to a map name (e.g. "ascent") only if auto-detect misbehaves.
+map_override: null
+
+map_detection:
+  recheck_interval: 300      # seconds between re-checks during a session
+  startup_retry_interval: 10 # seconds between retries when not in-game yet
