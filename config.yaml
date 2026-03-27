@@ -1,0 +1,27 @@
+minimap:
+  region:
+    top: 850
+    left: 20
+    width: 200
+    height: 200
+
+detection:
+  enemy_color_lower: [0, 120, 70]
+  enemy_color_upper: [10, 255, 255]
+  enemy_color_lower2: [170, 120, 70]
+  enemy_color_upper2: [180, 255, 255]
+  team_color_lower: [80, 100, 100]
+  team_color_upper: [100, 255, 255]
+  min_contour_area: 5
+
+ai:
+  enabled: true
+  model: "claude-opus-4-6"
+  analyze_interval: 3.0
+
+audio:
+  engine: "pyttsx3"
+  rate: 160
+  cooldown: 2.0
+
+map: "ascent"
