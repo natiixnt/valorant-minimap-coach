@@ -25,6 +25,13 @@ def main() -> None:
         fade_after=overlay_cfg.get("fade_after", 5.0),
     )
     coach.set_overlay(overlay)
+    overlay.on_voice_change = coach.tts.set_voice
+    overlay.on_voice_preview = coach.tts.preview
+    overlay.set_voice_options(coach.tts.list_voices(), coach.tts.current_voice_id)
+    overlay.on_lang_change = coach.set_callout_lang
+    from src.ui.overlay import load_settings as _ls
+    _saved = _ls()
+    coach.set_callout_lang(_saved.get("callout_lang", "EN"))
 
     thread = threading.Thread(target=coach.run, daemon=True, name="CoachLoop")
     thread.start()

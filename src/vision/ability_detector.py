@@ -78,6 +78,42 @@ _DEFAULTS: Dict[str, dict] = {
         "color": "#ff6b35",
         "min_area": 8,
     },
+    # Omen/Brimstone smokes show as dark teal/gray circles on minimap
+    "omen_smoke": {
+        "lower": [95, 60, 55],
+        "upper": [125, 160, 130],
+        "voice": "Smoke at {zone}, careful",
+        "display": "Smoke",
+        "color": "#78909c",
+        "min_area": 14,
+    },
+    # Skye guide (Trailblazer) — bright teal flash
+    "skye_guide": {
+        "lower": [158, 130, 150],
+        "upper": [172, 255, 255],
+        "voice": "Skye guide at {zone}",
+        "display": "Skye Guide",
+        "color": "#26c6da",
+        "min_area": 5,
+    },
+    # Cypher camera — small bright cyan dot (slightly different hue from team)
+    "cypher_camera": {
+        "lower": [85, 180, 180],
+        "upper": [100, 255, 255],
+        "voice": "Cypher camera at {zone}, watch out",
+        "display": "Cypher Cam",
+        "color": "#00e5ff",
+        "min_area": 3,
+    },
+    # KAY/O knife suppression circle — lime green
+    "kayo_knife": {
+        "lower": [40, 160, 160],
+        "upper": [58, 255, 255],
+        "voice": "KAY/O knife at {zone}, suppression",
+        "display": "KAYO Knife",
+        "color": "#aeea00",
+        "min_area": 10,
+    },
 }
 
 # How long without a detection before we consider the ability gone
