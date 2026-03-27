@@ -5,6 +5,7 @@ import yaml
 
 from src.audio.audio_coach import AudioCoach
 from src.audio.gunshot_detector import GunEvent
+from src.audio.spike_audio import DefuseAdvisor
 from src.audio.tts import TTSEngine
 from src.capture.screen import ScreenCapture
 from src.core.perf_monitor import PerfMonitor
@@ -65,14 +66,15 @@ class Coach:
         self.audio_coach = AudioCoach(config)
 
         # Game intelligence
-        self.round_state  = RoundState()
-        self.heatmap      = Heatmap()
-        self.play_det     = PlayDetector()
-        self.zone_tracker = ZoneTracker()
-        self.trajectory   = TrajectoryPredictor()
-        self.retake       = RetakeAdvisor()
-        self.economy      = EconomyTracker()
-        self.ult_tracker  = UltTracker()
+        self.round_state   = RoundState()
+        self.heatmap       = Heatmap()
+        self.play_det      = PlayDetector()
+        self.zone_tracker  = ZoneTracker()
+        self.trajectory    = TrajectoryPredictor()
+        self.retake        = RetakeAdvisor()
+        self.economy       = EconomyTracker()
+        self.ult_tracker   = UltTracker()
+        self.defuse_advisor = DefuseAdvisor()
 
         # AI + telemetry
         self.collector = DataCollector(config)
@@ -102,6 +104,7 @@ class Coach:
         self._stack_warned: set  = set()
         self._spike_plant_time   = 0.0
         self._recent_ai_callouts: List[str] = []
+        self._audio_round_ended  = False
         self._running            = True
         self._overlay: Optional["OverlayWindow"] = None
 
@@ -133,19 +136,24 @@ class Coach:
     # ------------------------------------------------------------------
 
     def _on_round_start_audio(self) -> None:
-        prev_round = self.round_state.round_num
         self.round_state.on_round_start_sound()
+        self.spike_detector.reset()
         self.retake.reset()
         self.zone_tracker.reset()
         self.trajectory.reset()
-        # Ult warning at new round
+        self.defuse_advisor.reset()
+        self.audio_coach.on_spike_resolved()
+        self._ui(self._overlay.hide_defuse_progress)  # type: ignore[union-attr]
+        self._stack_frames.clear()
+        self._stack_warned.clear()
+        self._audio_round_ended = False
         ult_warn = self.ult_tracker.update(self.round_state.round_num)
         if ult_warn:
             self._speak(ult_warn)
         print(f"[Coach] Round {self.round_state.round_num} (audio trigger)")
 
     def _on_round_end_audio(self) -> None:
-        # Determine rough win/loss from spike planted state
+        self._audio_round_ended = True
         our_win = not self.spike_detector.is_planted
         self.economy.on_round_end(our_win=our_win)
         self.ult_tracker.on_round_end(self.round_state.round_num)
@@ -223,7 +231,7 @@ class Coach:
         spike_planted = self.spike_detector.is_planted
         rs_event = self.round_state.update(result.enemy_count, spike_planted)
 
-        if rs_event == "round_end" and not hasattr(self, "_round_ended_by_audio"):
+        if rs_event == "round_end" and not self._audio_round_ended:
             # Fallback: audio callback wasn't triggered, update economy here
             our_win = not spike_planted
             self.economy.on_round_end(our_win=our_win)
@@ -302,6 +310,9 @@ class Coach:
             self._spike_plant_time = time.monotonic()
             self.round_state.on_spike_planted()
             self.economy.on_spike_planted()
+            # Arm audio spike beep detector
+            self.audio_coach.on_spike_planted(self._spike_plant_time)
+            self.defuse_advisor.reset()
 
         # -- Retake advisor (post-plant phase)
         if self.spike_detector.is_planted and self.spike_detector.planted_pos and team:
@@ -313,6 +324,33 @@ class Coach:
             if advice:
                 self._speak(advice, priority=True)
                 self._ui(self._overlay.update_callout, advice)  # type: ignore[union-attr]
+
+        # -- Defuse feasibility (post-plant phase)
+        if self.spike_detector.is_planted and self.spike_detector.planted_pos:
+            remaining = self.audio_coach.spike_timer.remaining()
+            if remaining is not None and remaining > 0:
+                # Estimate travel time to spike from player position
+                spike_zone = pos_to_zone(
+                    self.spike_detector.planted_pos[0],
+                    self.spike_detector.planted_pos[1],
+                    self.map_name,
+                )
+                travel = self.retake._rank_teammates(
+                    team if team else [self.audio_coach.player_pos],
+                    spike_zone, self.map_name,
+                )
+                min_travel = travel[0][0] if travel else 5.0
+                defuse_advice = self.defuse_advisor.update(remaining, min_travel)
+                if defuse_advice:
+                    self._speak(defuse_advice, priority=True)
+                    self._ui(self._overlay.update_callout, defuse_advice)  # type: ignore[union-attr]
+
+            # -- Defuse progress tracker (hypothetical -- based on detected defuse hum)
+            defuse_pct = self.audio_coach.defuse_sound.progress()
+            if defuse_pct is not None:
+                self._ui(self._overlay.update_defuse_progress, defuse_pct)  # type: ignore[union-attr]
+            else:
+                self._ui(self._overlay.hide_defuse_progress)  # type: ignore[union-attr]
 
         # -- New enemies spotted
         if result.enemy_count > self._prev_enemy_count:
