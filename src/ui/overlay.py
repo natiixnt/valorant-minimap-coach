@@ -708,7 +708,7 @@ class SettingsWindow(ctk.CTkToplevel):
             self._api_key_entry.insert(0, saved_key)
 
         # Status label
-        self._key_status = ctk.CTkLabel(parent, text="  no key -- AI callouts disabled",
+        self._key_status = ctk.CTkLabel(parent, text="  no key - AI callouts disabled",
                                         text_color="#f44336", font=("Consolas", 8))
         self._key_status.pack(anchor="w", padx=14, pady=(0, 4))
         self._refresh_key_status()
@@ -720,10 +720,10 @@ class SettingsWindow(ctk.CTkToplevel):
             return
         val = self._api_key_entry.get().strip()
         if not val:
-            self._key_status.configure(text="  no key -- AI callouts disabled",
+            self._key_status.configure(text="  no key - AI callouts disabled",
                                        text_color="#f44336")
         elif val.startswith("sk-ant-") and len(val) > 20:
-            self._key_status.configure(text="  key entered -- click TEST to verify",
+            self._key_status.configure(text="  key entered - click TEST to verify",
                                        text_color="#ff9800")
         else:
             self._key_status.configure(text="  unexpected format (should start with sk-ant-)",
@@ -754,7 +754,7 @@ class SettingsWindow(ctk.CTkToplevel):
                 if "401" in msg or "authentication" in msg.lower() or "invalid" in msg.lower():
                     result = ("  invalid key", "#f44336")
                 elif "429" in msg:
-                    result = ("  rate limited -- key probably valid", "#ff9800")
+                    result = ("  rate limited - key probably valid", "#ff9800")
                 else:
                     result = (f"  error: {msg[:50]}", "#ff9800")
             def _update():
@@ -774,11 +774,11 @@ class SettingsWindow(ctk.CTkToplevel):
         self._section(parent, "ENEMY TEAM")
         ctk.CTkLabel(
             parent,
-            text="  auto-detected on round 1 -- manual override if needed",
+            text="  auto-detected on round 1 - manual override if needed",
             text_color=c["dim"], font=("Consolas", 8),
         ).pack(anchor="w", padx=14, pady=(0, 6))
 
-        _NONE = "--"
+        _NONE = "-"
         options = [_NONE] + [agent_display(a) for a in ALL_AGENTS]
         current = self._master._current_enemy_agents
 
