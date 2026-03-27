@@ -16,7 +16,7 @@ import yaml
 
 def take_screenshot() -> np.ndarray:
     with mss.mss() as sct:
-        raw = sct.grab(sct.monitors[1])
+        raw = sct.grab(sct.monitors[0])  # monitors[0] = virtual desktop spanning all displays
     return np.array(raw)[:, :, :3]
 
 

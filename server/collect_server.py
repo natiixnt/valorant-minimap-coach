@@ -145,7 +145,11 @@ async def feedback(
             matches = list(label_dir.glob(f"{ts}_*.jpg")) + list(label_dir.glob(f"{ts}_*.npy"))
             if not matches:
                 continue
-            meta = json.loads((label_dir / "meta.json").read_text()) if (label_dir / "meta.json").exists() else {}
+            meta_path = label_dir / "meta.json"
+            try:
+                meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+            except (json.JSONDecodeError, OSError):
+                meta = {}
             fb   = meta.get("feedback", {"positive": 0, "negative": 0})
             if positive:
                 fb["positive"] = fb.get("positive", 0) + 1
