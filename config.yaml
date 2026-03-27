@@ -25,7 +25,7 @@ detection:
 
 ai:
   enabled: true
-  model: "claude-opus-4-6"
+  model: "claude-sonnet-4-6"
   analyze_interval: 3.0
 
 audio:
@@ -38,8 +38,20 @@ audio:
 map_override: null
 
 map_detection:
+  model: "claude-haiku-4-5-20251001"  # cheapest model, task is trivial classification
   recheck_interval: 300      # seconds between re-checks during a session
   startup_retry_interval: 10 # seconds between retries when not in-game yet
 
 overlay:
   fade_after: 5.0  # seconds for enemy dot to fade after last detection
+
+audio_coach:
+  enabled: true
+  # Loopback/monitor device name (partial match). Leave null for auto-detect.
+  # Windows:  null  (auto WASAPI loopback)
+  # macOS:    "BlackHole" or "Loopback"
+  # Linux:    "monitor" (PulseAudio)
+  device: null
+  # Minimum classifier confidence (0-1) to name an agent in callouts.
+  # Below this threshold, callouts say "someone" instead of agent name.
+  agent_conf_threshold: 0.45

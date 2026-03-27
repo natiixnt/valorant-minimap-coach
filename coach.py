@@ -4,12 +4,14 @@ from typing import TYPE_CHECKING, Optional
 import yaml
 
 from src.audio.tts import TTSEngine
+from src.audio.audio_coach import AudioCoach
 from src.capture.screen import ScreenCapture
 from src.maps.callouts import enemies_to_callout, pos_to_zone, stack_callout
 from src.vision.ability_detector import AbilityDetector
 from src.vision.ai_analyzer import AIAnalyzer
 from src.vision.detector import MinimapDetector
 from src.vision.map_detector import MapDetector
+from src.vision.player_angle import PlayerAngleDetector
 from src.vision.spike_detector import SpikeDetector
 
 if TYPE_CHECKING:
@@ -41,6 +43,8 @@ class Coach:
         self.map_detector = MapDetector(config) if not self._map_override else None
         self.map_name: str = self._map_override or "unknown"
         self.spike_detector = SpikeDetector()
+        self.player_angle_detector = PlayerAngleDetector()
+        self.audio_coach = AudioCoach(config)
         self._prev_enemy_count = 0
         self._callout_lang: str = "EN"
         # zone -> consecutive frames with 3+ enemies in that zone
@@ -86,6 +90,7 @@ class Coach:
             print(f"[Coach] Map changed: {new_map}")
             self._ui(self._overlay.update_map, new_map)  # type: ignore[union-attr]
             self.tts.speak(f"New map: {new_map}")
+            self.audio_coach.map_name = new_map
 
     # -----------------------------------------------------------------------
     # Main loop
@@ -93,6 +98,8 @@ class Coach:
 
     def run(self) -> None:
         self._startup_map_detection()
+        self.audio_coach.map_name = self.map_name
+        self.audio_coach.start()
         print(f"[Coach] Running. Map: {self.map_name}. Ctrl+C to stop.")
         self.tts.speak("Coach active")
 
@@ -115,6 +122,23 @@ class Coach:
                 for sig in self.ability_detector.active.values()
             ]
             self._ui(self._overlay.update_utility, active_abs)  # type: ignore[union-attr]
+
+            # Player facing angle for audio direction fusion
+            player_angle = self.player_angle_detector.detect(frame)
+            if player_angle is not None:
+                self.audio_coach.player_facing = player_angle
+
+            # Player position: use minimap center as best guess when no teammates tracked
+            if result.enemies:
+                # Rough player pos: opposite side of minimap from most enemies
+                avg_ex = sum(x for x, y in result.enemies) / len(result.enemies)
+                avg_ey = sum(y for x, y in result.enemies) / len(result.enemies)
+                px = 1.0 - avg_ex
+                py = 1.0 - avg_ey
+                self.audio_coach.player_pos = (
+                    max(0.1, min(0.9, px)),
+                    max(0.1, min(0.9, py)),
+                )
 
             # Fast CV path: spike planted
             spike_pos = self.spike_detector.update(frame)
@@ -179,12 +203,18 @@ class Coach:
                     self.tts.speak(ai_callout)
                     self._ui(self._overlay.update_ai, ai_callout)  # type: ignore[union-attr]
 
+            # Pro audio path: footstep direction + agent identification
+            for finding in self.audio_coach.poll():
+                self.tts.speak(finding.voice_text, priority=False)
+                self._ui(self._overlay.update_callout, finding.voice_text)  # type: ignore[union-attr]
+
             self._refresh_map()
             time.sleep(0.1)
 
         self._shutdown()
 
     def _shutdown(self) -> None:
+        self.audio_coach.stop()
         self.tts.stop()
         self.capture.close()
         print("[Coach] Stopped.")
