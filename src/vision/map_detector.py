@@ -139,7 +139,9 @@ class MapDetector:
         self._sct.close()
 
     def _grab(self) -> np.ndarray:
-        raw = self._sct.grab(self._sct.monitors[1])
+        # monitors[0] is the virtual desktop spanning all displays; works on any
+        # multi-monitor setup without needing to know which screen Valorant is on.
+        raw = self._sct.grab(self._sct.monitors[0])
         img = np.array(raw)[:, :, :3]
         h, w = img.shape[:2]
         # 4x downscale -> 480x270 on 1920x1080, fits in 1 image tile
