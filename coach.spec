@@ -25,6 +25,8 @@ _hidden = [
     "pyttsx3.drivers.nsss",
     "pyttsx3.drivers.espeak",
     "anthropic",
+    "huggingface_hub",
+    "huggingface_hub.utils",
     "mss",
     "mss.windows",
     "mss.darwin",
