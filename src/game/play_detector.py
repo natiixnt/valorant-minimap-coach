@@ -59,7 +59,7 @@ _CLUSTER_RADIUS = 0.18
 _CONFIRM_FRAMES = 3
 
 # Minimum speed (normalized units/frame) to classify as a rush
-_RUSH_SPEED_THRESHOLD = 0.004
+_RUSH_SPEED_THRESHOLD = 0.008
 
 # Site zones: zones that are on site A or B (or C for Haven, Lotus)
 # We detect which zones belong to sites by checking zone names

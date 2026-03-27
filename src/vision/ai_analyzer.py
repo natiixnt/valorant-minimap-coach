@@ -17,8 +17,9 @@ _UNCHANGED_FALLBACK = 10.0  # fire at most every 10s when scene hasn't changed
 class AIAnalyzer:
     def __init__(self, config: dict, collector: "Optional[DataCollector]" = None):
         self.client   = anthropic.Anthropic()
-        self.model    = config["ai"]["model"]
-        self.interval = config["ai"]["analyze_interval"]
+        ai_cfg        = config.get("ai", {})
+        self.model    = ai_cfg.get("model", "claude-opus-4-5")
+        self.interval = ai_cfg.get("analyze_interval", 5.0)
         self._last_call:     float = 0.0
         self._last_api_call: float = 0.0
         self._last_state:    tuple = ()

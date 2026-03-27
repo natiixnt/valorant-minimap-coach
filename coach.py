@@ -45,8 +45,16 @@ def load_config(path: str = "config.yaml") -> dict:
         if os.path.exists(bundled):
             shutil.copy(bundled, path)
             print(f"[Config] Extracted {path} next to executable")
-    with open(path) as f:
-        return yaml.safe_load(f)
+    try:
+        with open(path) as f:
+            return yaml.safe_load(f)
+    except FileNotFoundError:
+        print(f"[Config] ERROR: {path} not found. Copy config.yaml.example to config.yaml.",
+              file=sys.stderr)
+        sys.exit(1)
+    except yaml.YAMLError as e:
+        print(f"[Config] ERROR: {path} is malformed: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 class Coach:
@@ -100,6 +108,7 @@ class Coach:
         self._prev_enemy_count   = 0
         self._prev_team: List    = []
         self._callout_lang       = "EN"
+        self._lang_lock          = __import__("threading").Lock()
         self._stack_frames: dict = {}
         self._stack_warned: set  = set()
         self._spike_plant_time   = 0.0
@@ -119,15 +128,16 @@ class Coach:
         overlay.on_feedback    = self.collector.submit_feedback
 
     def set_callout_lang(self, lang: str) -> None:
-        self._callout_lang = lang
+        with self._lang_lock:
+            self._callout_lang = lang
 
     def _ui(self, fn, *args) -> None:
         if self._overlay:
             self._overlay.after(0, lambda: fn(*args))
 
-    def _speak(self, text: str, priority: bool = False) -> None:
+    def _speak(self, text: str, priority: bool = False, ttl: float = 2.5) -> None:
         try:
-            self.tts.speak(text, priority=priority)
+            self.tts.speak(text, priority=priority, ttl=ttl)
         except Exception as e:
             print(f"[Coach] TTS error: {e}")
 
@@ -149,7 +159,7 @@ class Coach:
         self._audio_round_ended = False
         ult_warn = self.ult_tracker.update(self.round_state.round_num)
         if ult_warn:
-            self._speak(ult_warn)
+            self._speak(ult_warn, ttl=12.0)          # informational, survives queue
         print(f"[Coach] Round {self.round_state.round_num} (audio trigger)")
 
     def _on_round_end_audio(self) -> None:
@@ -158,11 +168,10 @@ class Coach:
         self.economy.on_round_end(our_win=our_win)
         self.ult_tracker.on_round_end(self.round_state.round_num)
         self.round_state.on_round_end_sound()
-        # End heatmap round only once (audio path)
         self.heatmap.end_round(self.round_state.round_num)
         hot = self.heatmap.hottest_zones(2)
         if hot:
-            self._speak(self.heatmap.summary(), priority=False)
+            self._speak(self.heatmap.summary(), ttl=15.0)  # round summary, no rush
 
     # ------------------------------------------------------------------
     # Map detection
@@ -238,26 +247,26 @@ class Coach:
             self.ult_tracker.on_round_end(self.round_state.round_num)
             self.heatmap.end_round(self.round_state.round_num)
             econ = self.economy.status()
-            self._speak(econ.voice, priority=False)
+            self._speak(econ.voice, ttl=12.0)          # informational
 
         if rs_event == "round_start":
             ult_warn = self.ult_tracker.update(self.round_state.round_num)
             if ult_warn:
-                self._speak(ult_warn)
+                self._speak(ult_warn, ttl=12.0)
 
         # -- Enemy zone heatmap
         for x, y in result.enemies:
             zone = pos_to_zone(x, y, self.map_name)
             self.heatmap.add_sighting(zone, self.round_state.round_num)
 
-        # -- Zone transition callouts
+        # -- Zone transition callouts (stale fast -- enemy keeps moving)
         for trans in self.zone_tracker.update(result.enemies, self.map_name):
-            self._speak(trans, priority=False)
+            self._speak(trans, ttl=2.0)
             self._ui(self._overlay.update_callout, trans)  # type: ignore[union-attr]
 
-        # -- Trajectory prediction (advance warning ~1.5 s)
+        # -- Trajectory prediction (stale fast -- 1.5s lookahead window)
         for pred in self.trajectory.update(result.enemies, self.map_name):
-            self._speak(pred, priority=False)
+            self._speak(pred, ttl=2.0)
             self._ui(self._overlay.update_callout, pred)  # type: ignore[union-attr]
 
         # -- Play pattern detection (rush/split/lurk/execute)
@@ -363,14 +372,17 @@ class Coach:
                 self._ui(self._overlay.hide_defuse_progress)  # type: ignore[union-attr]
 
         # -- New enemies spotted
+        with self._lang_lock:
+            _lang = self._callout_lang
         if result.enemy_count > self._prev_enemy_count:
-            callout = enemies_to_callout(result.enemies, self.map_name, self._callout_lang)
+            callout = enemies_to_callout(result.enemies, self.map_name, _lang)
             if callout:
                 self._speak(callout, priority=True)
                 self._ui(self._overlay.update_callout, callout)  # type: ignore[union-attr]
 
-        # -- Site clear
-        if self._prev_enemy_count >= 2 and result.enemy_count == 0:
+        # -- Site clear (only during active round to avoid buy-phase false positives)
+        if (self._prev_enemy_count >= 2 and result.enemy_count == 0
+                and self.round_state.state == State.ROUND_ACTIVE):
             self._speak("Site clear")
             self._ui(self._overlay.update_callout, "Site clear")  # type: ignore[union-attr]
 
@@ -387,7 +399,7 @@ class Coach:
                 self._stack_frames[z] = self._stack_frames.get(z, 0) + 1
                 if self._stack_frames[z] == 3 and z not in self._stack_warned:
                     self._stack_warned.add(z)
-                    txt = stack_callout(z, cnt, self.map_name, self._callout_lang)
+                    txt = stack_callout(z, cnt, self.map_name, _lang)
                     self._speak(txt, priority=True)
                     self._ui(self._overlay.update_callout, txt)  # type: ignore[union-attr]
             else:
@@ -402,7 +414,7 @@ class Coach:
         for ab in appeared:
             zone = pos_to_zone(ab.position[0], ab.position[1], self.map_name)
             txt = ab.voice.format(zone=zone)
-            self._speak(txt)
+            self._speak(txt, ttl=4.0)
             self._ui(self._overlay.update_callout, txt)  # type: ignore[union-attr]
 
         # -- AI deep analysis
@@ -415,7 +427,7 @@ class Coach:
                     recent_callouts=self._recent_ai_callouts,
                 )
                 if ai_callout:
-                    self._speak(ai_callout)
+                    self._speak(ai_callout, ttl=5.0)
                     sample_ts = self.collector.submit_minimap_callout(
                         frame.data, ai_callout, self.map_name, result.enemies,
                         spike_active=self.spike_detector.is_planted,
@@ -429,11 +441,11 @@ class Coach:
         # -- Pro audio: footstep zones + gunshots
         for item in self.audio_coach.poll():
             if isinstance(item, GunEvent):
-                self._speak(item.voice)
+                self._speak(item.voice, ttl=1.5)
                 self._ui(self._overlay.update_callout, item.voice)  # type: ignore[union-attr]
             else:
                 # AudioFinding (footstep)
-                self._speak(item.voice_text)
+                self._speak(item.voice_text, ttl=2.0)
                 self._ui(self._overlay.update_callout, item.voice_text)  # type: ignore[union-attr]
                 if item.zone and item.audio_clip is not None:
                     self.collector.submit_footstep_audio(
@@ -448,5 +460,7 @@ class Coach:
         self.audio_coach.stop()
         self.tts.stop()
         self.capture.close()
+        if self.map_detector:
+            self.map_detector.close()
         print(f"[Coach] Stopped. Avg tick: {self._perf.avg_ms():.1f} ms  "
               f"p95: {self._perf.p95_ms():.1f} ms")

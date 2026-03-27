@@ -1,3 +1,4 @@
+import copy
 import threading
 import time
 from dataclasses import dataclass, field
@@ -66,4 +67,4 @@ class EnemyTracker:
                 if e.alpha > 0.0:
                     live.append(e)
             self._tracked = live
-            return list(live)
+            return [copy.copy(e) for e in live]

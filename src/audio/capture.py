@@ -90,26 +90,31 @@ class AudioCapture:
             import soundcard as sc
         except ImportError:
             print("[AudioCapture] 'soundcard' not installed. Run: pip install soundcard")
+            self._running = False
             return
 
         mic = self._get_loopback(sc)
         if mic is None:
             print("[AudioCapture] No loopback device found. Audio analysis disabled.")
+            self._running = False
             return
 
         print(f"[AudioCapture] Recording from: {mic.name}")
-        with mic.recorder(samplerate=SAMPLE_RATE, channels=CHANNELS) as rec:
-            while self._running:
-                try:
-                    data = rec.record(numframes=CHUNK_FRAMES)   # (frames, channels)
-                    if data.shape[1] < CHANNELS:
-                        # Mono device — duplicate channel
-                        data = np.repeat(data, CHANNELS, axis=1)
-                    with self._lock:
-                        self._ring.append(data[:, :CHANNELS].astype(np.float32))
-                except Exception as e:
-                    print(f"[AudioCapture] Record error: {e}")
-                    break
+        try:
+            with mic.recorder(samplerate=SAMPLE_RATE, channels=CHANNELS) as rec:
+                while self._running:
+                    try:
+                        data = rec.record(numframes=CHUNK_FRAMES)   # (frames, channels)
+                        if data.shape[1] < CHANNELS:
+                            # Mono device — duplicate channel
+                            data = np.repeat(data, CHANNELS, axis=1)
+                        with self._lock:
+                            self._ring.append(data[:, :CHANNELS].astype(np.float32))
+                    except Exception as e:
+                        print(f"[AudioCapture] Record error: {e}")
+                        break
+        finally:
+            self._running = False
 
     def _get_loopback(self, sc) -> object:
         """Return best matching loopback/monitor microphone."""

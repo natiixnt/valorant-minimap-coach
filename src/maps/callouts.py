@@ -512,7 +512,7 @@ def enemies_to_callout(
         return t["split"].format(n=2, locs=f"{zones[0]} - {zones[1]}")
     return (
         t["multi"].format(n=n, loc=zones[0]) if len(zones) == 1
-        else t["split"].format(n=n, locs=f"{zones[0]} - {zones[1]}")
+        else t["split"].format(n=n, locs=" - ".join(zones[:3]))
     )
 
 

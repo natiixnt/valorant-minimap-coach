@@ -71,8 +71,8 @@ class DataCollector:
 
     def __init__(self, config: dict) -> None:
         cfg               = config.get("data_collection", {})
-        # Default enabled=True; user can opt-out via config.yaml
-        self.enabled      = cfg.get("enabled", True)
+        # Default disabled; user must opt-in via config.yaml
+        self.enabled      = cfg.get("enabled", False)
         self._hf_repo     = cfg.get("hf_repo", "").strip() or _DEFAULT_HF_REPO
         self._hf_token    = cfg.get("hf_token", "").strip()
         self._app_version = config.get("app_version", "unknown")
