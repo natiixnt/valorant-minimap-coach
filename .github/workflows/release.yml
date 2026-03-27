@@ -60,6 +60,6 @@ jobs:
                ```
                ANTHROPIC_API_KEY=sk-ant-...
                ```
-            3. Run `ValorantCoach.exe` — it creates `config.yaml` automatically on first run
+            3. Run `ValorantCoach.exe` - it creates `config.yaml` automatically on first run
             4. Run `calibrate.py` once (requires Python) or edit `config.yaml` to set your minimap position
             5. Open Valorant and the coach detects your map automatically
