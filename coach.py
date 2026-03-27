@@ -42,10 +42,12 @@ def load_config(path: str = "config.yaml") -> dict:
     import os, sys
     if getattr(sys, "frozen", False) and not os.path.exists(path):
         import shutil
-        bundled = os.path.join(sys._MEIPASS, path)  # type: ignore[attr-defined]
-        if os.path.exists(bundled):
-            shutil.copy(bundled, path)
-            print(f"[Config] Extracted {path} next to executable")
+        for candidate in [path, "config.yaml.example"]:
+            bundled = os.path.join(sys._MEIPASS, candidate)  # type: ignore[attr-defined]
+            if os.path.exists(bundled):
+                shutil.copy(bundled, path)
+                print(f"[Config] Extracted {bundled} → {path}")
+                break
     try:
         with open(path) as f:
             return yaml.safe_load(f)

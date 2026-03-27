@@ -5,8 +5,12 @@ import customtkinter
 ctk_dir = os.path.dirname(customtkinter.__file__)
 block_cipher = None
 
+# Bundle config.yaml if present (local build); fall back to config.yaml.example (CI build).
+# coach.py load_config() will extract whichever is found and write config.yaml next to the exe.
+_config_src = "config.yaml" if os.path.exists("config.yaml") else "config.yaml.example"
+
 _datas = [
-    ("config.yaml", "."),
+    (_config_src, "."),
     ("src", "src"),
     (ctk_dir, "customtkinter"),
     ("src/ui/fa-solid-900.ttf", "src/ui"),
