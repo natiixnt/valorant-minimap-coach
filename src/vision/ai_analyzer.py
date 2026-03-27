@@ -13,13 +13,12 @@ class AIAnalyzer:
         self.client = anthropic.Anthropic()
         self.model: str = config["ai"]["model"]
         self.interval: float = config["ai"]["analyze_interval"]
-        self.map_name: str = config.get("map", "unknown")
         self._last_call: float = 0.0
 
     def should_analyze(self) -> bool:
         return time.time() - self._last_call >= self.interval
 
-    def analyze(self, frame: MinimapFrame, enemy_count: int) -> Optional[str]:
+    def analyze(self, frame: MinimapFrame, enemy_count: int, map_name: str = "unknown") -> Optional[str]:
         if not self.should_analyze():
             return None
         self._last_call = time.time()
@@ -28,7 +27,7 @@ class AIAnalyzer:
         img_b64 = base64.b64encode(buf).decode()
 
         prompt = (
-            f"Valorant minimap, map: {self.map_name}. "
+            f"Valorant minimap, map: {map_name}. "
             f"CV detected ~{enemy_count} visible enemies. "
             "Give one short voice callout (max 10 words) like a smart teammate. "
             "Focus on: danger, rotation advice, or flanking warnings. "

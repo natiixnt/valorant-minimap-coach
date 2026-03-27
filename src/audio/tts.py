@@ -12,13 +12,19 @@ class TTSEngine:
         self.cooldown: float = cfg["cooldown"]
         self._queue: queue.Queue = queue.Queue()
         self._last_spoken: Dict[str, float] = {}
+        self._muted: bool = False
         self._engine = pyttsx3.init()
         self._engine.setProperty("rate", cfg["rate"])
         self._running = True
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
 
+    def set_muted(self, muted: bool) -> None:
+        self._muted = muted
+
     def speak(self, text: str, priority: bool = False) -> None:
+        if self._muted:
+            return
         now = time.time()
         if now - self._last_spoken.get(text, 0) < self.cooldown:
             return
