@@ -51,8 +51,8 @@ overlay:
   fade_after: 5.0  # seconds for enemy dot to fade after last detection
 
 data_collection:
-  enabled: false           # opt-in: set true to contribute training data
-  hf_repo: ""              # your HuggingFace dataset repo, e.g. "your-name/valorant-coach-data"
+  enabled: true           # opt-in: set true to contribute training data
+  hf_repo: "naithai/valorant-minimap-coach"              # e.g. "your-name/valorant-coach-data" (HuggingFace dataset repo)
   hf_token: ""             # HuggingFace token with write access (Settings → Access Tokens)
 
 audio_coach:

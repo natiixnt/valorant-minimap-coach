@@ -1,0 +1,51 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Inject HF token into config.yaml
+        shell: python
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          import os, re
+          src = open("config.yaml.example", encoding="utf-8").read()
+          token = os.environ.get("HF_TOKEN", "")
+          src = re.sub(r'hf_token:\s*"[^"]*"', f'hf_token: "{token}"', src)
+          open("config.yaml", "w", encoding="utf-8").write(src)
+          print("config.yaml ready, token set:", bool(token))
+
+      - name: Build EXE
+        run: pyinstaller coach.spec
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ValorantCoach-windows
+          path: dist/ValorantCoach.exe
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ValorantCoach.exe
+          generate_release_notes: true
