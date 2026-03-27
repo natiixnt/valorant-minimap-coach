@@ -40,7 +40,7 @@ import numpy as np
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-SAMPLE_RATE = 44100
+SAMPLE_RATE = 48000   # Valorant outputs at 48 kHz; match agent_classifier.py
 CLIP_SECONDS = 0.35
 PRE_TRIGGER_SEC = 0.08   # capture this many seconds before key press
 CLIP_SAMPLES = int(CLIP_SECONDS * SAMPLE_RATE)
