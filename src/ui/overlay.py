@@ -622,6 +622,8 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self._build_api_key(content, c)
         self._divider(content)
+        self._build_enemy_team(content, c)
+        self._divider(content)
         self._build_voice(content, c)
         self._divider(content)
         self._build_lang(content, c)
@@ -762,6 +764,68 @@ class SettingsWindow(ctk.CTkToplevel):
             self.after(0, _update)
 
         _t.Thread(target=_run, daemon=True).start()
+
+    # ---- enemy team ----
+
+    def _build_enemy_team(self, parent, c: dict) -> None:
+        from src.audio.agent_classifier import ALL_AGENTS
+        from src.game.enemy_agents import agent_display
+
+        self._section(parent, "ENEMY TEAM")
+        ctk.CTkLabel(
+            parent,
+            text="  set at game start -- narrows footstep callouts to specific agents",
+            text_color=c["dim"], font=("Consolas", 8),
+        ).pack(anchor="w", padx=14, pady=(0, 6))
+
+        _NONE = "--"
+        options = [_NONE] + [agent_display(a) for a in ALL_AGENTS]
+        current = self._master._current_enemy_agents  # list of raw agent names
+
+        self._enemy_combos: List[ctk.CTkComboBox] = []
+
+        # 3 slots per row
+        for row_start in range(0, 5, 3):
+            row_fr = ctk.CTkFrame(parent, fg_color="transparent")
+            row_fr.pack(fill="x", padx=14, pady=(0, 4))
+            for slot in range(row_start, min(row_start + 3, 5)):
+                saved_name = agent_display(current[slot]) if slot < len(current) else _NONE
+                combo = ctk.CTkComboBox(
+                    row_fr, values=options, width=106, height=26,
+                    fg_color=c["panel"], button_color=c["accent"],
+                    button_hover_color=c["safe"], border_color=c["dim"],
+                    text_color=c["text"], font=("Consolas", 9),
+                    dropdown_fg_color=c["panel"], dropdown_text_color=c["text"],
+                    dropdown_hover_color=c["accent"], corner_radius=2,
+                )
+                combo.set(saved_name if saved_name in options else _NONE)
+                combo.pack(side="left", padx=(0, 6))
+                self._enemy_combos.append(combo)
+
+        def _clear():
+            for cb in self._enemy_combos:
+                cb.set(_NONE)
+
+        ctk.CTkButton(
+            parent, text="CLEAR", width=68, height=24,
+            fg_color=c["panel"], text_color=c["dim"],
+            hover_color=c["dim"], font=("Consolas", 8, "bold"),
+            corner_radius=2, command=_clear,
+        ).pack(anchor="w", padx=14, pady=(0, 4))
+
+    def _get_enemy_agents(self) -> List[str]:
+        """Return raw agent names from the 5 enemy team dropdowns."""
+        from src.audio.agent_classifier import ALL_AGENTS
+        from src.game.enemy_agents import agent_display
+
+        display_to_raw = {agent_display(a): a for a in ALL_AGENTS}
+        result = []
+        for cb in getattr(self, "_enemy_combos", []):
+            val = cb.get()
+            raw = display_to_raw.get(val)
+            if raw:
+                result.append(raw)
+        return result
 
     # ---- voice ----
 
@@ -987,12 +1051,19 @@ class SettingsWindow(ctk.CTkToplevel):
                 _os.environ["ANTHROPIC_API_KEY"] = api_key
 
         tts_volume = float(self._vol_var.get()) / 100.0 if hasattr(self, "_vol_var") else 1.0
+
+        enemy_agents = self._get_enemy_agents()
+        self._master._current_enemy_agents = enemy_agents
+        if self._master.on_enemy_agents_change:
+            self._master.on_enemy_agents_change(enemy_agents)
+
         save_settings({
             "colors":            new_c,
             "voice_id":          voice_id,
             "callout_lang":      self._master._current_lang,
             "anthropic_api_key": api_key,
             "tts_volume":        tts_volume,
+            "enemy_agents":      enemy_agents,
         })
         self.destroy()
 
@@ -1021,8 +1092,9 @@ class OverlayWindow(ctk.CTk):
         self.on_mute_change:    Optional[Callable[[bool],  None]] = None
         self.on_voice_change:   Optional[Callable[[str],   None]] = None
         self.on_voice_preview:  Optional[Callable[[str],   None]] = None
-        self.on_lang_change:    Optional[Callable[[str],   None]] = None
-        self.on_volume_change:  Optional[Callable[[float], None]] = None
+        self.on_lang_change:          Optional[Callable[[str],       None]] = None
+        self.on_volume_change:        Optional[Callable[[float],     None]] = None
+        self.on_enemy_agents_change:  Optional[Callable[[List[str]], None]] = None
         self._voice_options:   list = []
         self._tracker          = EnemyTracker(fade_after=fade_after)
         self._drag:            dict = {}
@@ -1038,6 +1110,7 @@ class OverlayWindow(ctk.CTk):
             self._c.setdefault(k, v)
         self._current_voice_id   = saved.get("voice_id", "")
         self._current_lang       = saved.get("callout_lang", "EN")
+        self._current_enemy_agents: List[str] = saved.get("enemy_agents", [])
         self._callout_text_visible = saved.get("callout_text_visible", True)
 
         self._setup_window()

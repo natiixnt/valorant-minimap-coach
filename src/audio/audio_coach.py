@@ -146,6 +146,16 @@ class AudioCoach:
         with self._state_lock:
             self._map_name = value
 
+    @property
+    def enemy_agents(self) -> Optional[EnemyAgentTracker]:
+        with self._state_lock:
+            return self._enemy_agents
+
+    @enemy_agents.setter
+    def enemy_agents(self, value: Optional[EnemyAgentTracker]) -> None:
+        with self._state_lock:
+            self._enemy_agents = value
+
     # ------------------------------------------------------------------
     def arm_spike_audio(self) -> None:
         """
@@ -266,7 +276,13 @@ class AudioCoach:
         if conf < _AGENT_CONF_THRESHOLD or shoe_type == "unknown":
             shoe_display = "enemy"
         else:
-            shoe_display = f"{shoe_type}-step enemy"  # e.g. "heavy-step enemy"
+            # Narrow down by enemy team composition if configured
+            tracker = self._enemy_agents
+            narrowed = tracker.callout_for_shoe_type(shoe_type) if tracker else None
+            if narrowed:
+                shoe_display = narrowed          # e.g. "Breach" or "Breach or Brimstone"
+            else:
+                shoe_display = f"{shoe_type}-step enemy"
 
         # -- Zone name from estimated map position
         zone = ""

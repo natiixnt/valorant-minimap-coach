@@ -86,9 +86,14 @@ def main() -> None:
     overlay.on_voice_preview = coach.tts.preview
     overlay.set_voice_options(coach.tts.list_voices(), coach.tts.current_voice_id)
     overlay.on_lang_change = coach.set_callout_lang
+    overlay.on_volume_change = coach.tts.set_volume
+    overlay.on_enemy_agents_change = coach.enemy_agents.set_agents
     from src.ui.overlay import load_settings as _ls
     _saved = _ls()
     coach.set_callout_lang(_saved.get("callout_lang", "EN"))
+    saved_enemies = _saved.get("enemy_agents", [])
+    if saved_enemies:
+        coach.enemy_agents.set_agents(saved_enemies)
 
     thread = threading.Thread(target=coach.run, daemon=True, name="CoachLoop")
     thread.start()

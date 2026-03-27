@@ -17,6 +17,7 @@ from src.game.round_state import RoundState, State
 from src.game.trajectory import TrajectoryPredictor
 from src.game.ult_tracker import UltTracker
 from src.game.zone_tracker import ZoneTracker
+from src.game.enemy_agents import EnemyAgentTracker
 from src.maps.callouts import enemies_to_callout, pos_to_zone, stack_callout
 from src.telemetry.collector import DataCollector
 from src.vision.ability_detector import AbilityDetector
@@ -83,6 +84,8 @@ class Coach:
         self.economy       = EconomyTracker()
         self.ult_tracker   = UltTracker()
         self.defuse_advisor = DefuseAdvisor()
+        self.enemy_agents  = EnemyAgentTracker()
+        self.audio_coach.enemy_agents = self.enemy_agents
 
         # AI + telemetry
         self.collector = DataCollector(config)
@@ -155,6 +158,7 @@ class Coach:
         self.zone_tracker.reset()
         self.trajectory.reset()
         self.defuse_advisor.reset()
+        self.enemy_agents.new_round()
         self.audio_coach.on_spike_resolved()
         self._ui(self._overlay.hide_defuse_progress)  # type: ignore[union-attr]
         self._stack_frames.clear()
