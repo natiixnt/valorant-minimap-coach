@@ -774,13 +774,13 @@ class SettingsWindow(ctk.CTkToplevel):
         self._section(parent, "ENEMY TEAM")
         ctk.CTkLabel(
             parent,
-            text="  set at game start -- narrows footstep callouts to specific agents",
+            text="  auto-detected on round 1 -- manual override if needed",
             text_color=c["dim"], font=("Consolas", 8),
         ).pack(anchor="w", padx=14, pady=(0, 6))
 
         _NONE = "--"
         options = [_NONE] + [agent_display(a) for a in ALL_AGENTS]
-        current = self._master._current_enemy_agents  # list of raw agent names
+        current = self._master._current_enemy_agents
 
         self._enemy_combos: List[ctk.CTkComboBox] = []
 
@@ -802,16 +802,19 @@ class SettingsWindow(ctk.CTkToplevel):
                 combo.pack(side="left", padx=(0, 6))
                 self._enemy_combos.append(combo)
 
+        btn_row = ctk.CTkFrame(parent, fg_color="transparent")
+        btn_row.pack(anchor="w", padx=14, pady=(2, 4))
+
         def _clear():
             for cb in self._enemy_combos:
                 cb.set(_NONE)
 
         ctk.CTkButton(
-            parent, text="CLEAR", width=68, height=24,
+            btn_row, text="CLEAR", width=68, height=24,
             fg_color=c["panel"], text_color=c["dim"],
             hover_color=c["dim"], font=("Consolas", 8, "bold"),
             corner_radius=2, command=_clear,
-        ).pack(anchor="w", padx=14, pady=(0, 4))
+        ).pack(side="left", padx=(0, 6))
 
     def _get_enemy_agents(self) -> List[str]:
         """Return raw agent names from the 5 enemy team dropdowns."""

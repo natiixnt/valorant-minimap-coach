@@ -18,6 +18,7 @@ from src.game.trajectory import TrajectoryPredictor
 from src.game.ult_tracker import UltTracker
 from src.game.zone_tracker import ZoneTracker
 from src.game.enemy_agents import EnemyAgentTracker
+from src.vision.agent_detector import AgentDetector
 from src.maps.callouts import enemies_to_callout, pos_to_zone, stack_callout
 from src.telemetry.collector import DataCollector
 from src.vision.ability_detector import AbilityDetector
@@ -86,7 +87,8 @@ class Coach:
         self.economy       = EconomyTracker()
         self.ult_tracker   = UltTracker()
         self.defuse_advisor = DefuseAdvisor()
-        self.enemy_agents  = EnemyAgentTracker()
+        self.enemy_agents   = EnemyAgentTracker()
+        self.agent_detector = AgentDetector(config)
         self.audio_coach.enemy_agents = self.enemy_agents
 
         # AI + telemetry
@@ -162,6 +164,15 @@ class Coach:
         self.defuse_advisor.reset()
         self.enemy_agents.new_round()
         self.audio_coach.on_spike_resolved()
+
+        # Round 1: auto-detect enemy agents from HUD portrait strip
+        if self.round_state.round_num == 1:
+            def _on_detected(agents):
+                if agents and self._overlay:
+                    self._ui(
+                        lambda: setattr(self._overlay, "_current_enemy_agents", agents)
+                    )
+            self.agent_detector.detect_async(self.enemy_agents, on_done=_on_detected)
         self._ui(self._overlay.hide_defuse_progress)  # type: ignore[union-attr]
         self._stack_frames.clear()
         self._stack_warned.clear()
@@ -210,6 +221,9 @@ class Coach:
             self._ui(self._overlay.update_map, new_map)  # type: ignore[union-attr]
             self._speak(f"New map: {new_map}")
             self.audio_coach.map_name = new_map
+            # New game -- reset agent detection and composition
+            self.agent_detector.reset()
+            self.enemy_agents.clear()
 
     # ------------------------------------------------------------------
     # Main loop
@@ -495,5 +509,6 @@ class Coach:
         self.capture.close()
         if self.map_detector:
             self.map_detector.close()
+        self.agent_detector.close()
         print(f"[Coach] Stopped. Avg tick: {self._perf.avg_ms():.1f} ms  "
               f"p95: {self._perf.p95_ms():.1f} ms")
