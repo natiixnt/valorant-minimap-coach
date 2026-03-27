@@ -31,6 +31,7 @@ from src.audio.capture import AudioCapture, SAMPLE_RATE
 from src.audio.footstep_detector import FootstepDetector, FootstepEvent
 from src.audio.direction_estimator import DirectionEstimator, audio_az_to_map_direction, direction_to_map_pos
 from src.audio.agent_classifier import AgentClassifier
+from src.maps.callouts import pos_to_zone
 from src.maps.surfaces import get_surface, surface_matches, surface_to_voice
 
 # Model path (relative to cwd = project root)
@@ -54,14 +55,16 @@ _DEFAULT_M_PER_UNIT = 105.0
 @dataclass
 class AudioFinding:
     """One footstep event processed into game-useful information."""
-    agent: str                          # agent name or "someone"
-    agent_role: str                     # "heavy" | "medium" | "light" | "unknown"
+    agent: str                          # shoe type: "heavy" | "medium" | "light" | "unknown"
+    agent_role: str                     # same as agent (shoe type)
     surface: str                        # "metal" | "wood" | "concrete" | "carpet"
     azimuth_deg: float                  # relative to player: 0=ahead, +90=right
     map_direction_deg: float            # compass on map: 0=up, 90=right
-    estimated_pos: Tuple[float, float]  # normalized (x,y) on minimap, may be (0,0) if unknown
+    estimated_pos: Tuple[float, float]  # normalized (x,y) on minimap
+    zone: str                           # map zone name e.g. "B Long", or "" if unknown
     distance_m: float                   # rough distance estimate
     confidence: float                   # overall confidence 0-1
+    audio_clip: Optional[np.ndarray]    # mono float32 audio clip for data collection
     voice_text: str                     # ready-to-speak callout string
 
 
@@ -171,22 +174,28 @@ class AudioCoach:
         else:
             shoe_display = f"{shoe_type}-step enemy"  # e.g. "heavy-step enemy"
 
+        # -- Zone name from estimated map position
+        zone = ""
+        if self.map_name != "unknown":
+            zone = pos_to_zone(est_pos[0], est_pos[1], self.map_name)
+
         # -- Surface cross-check against map
         map_surface = get_surface(est_pos[0], est_pos[1], self.map_name)
         surface = event.surface
         surface_hint = ""
         if not surface_matches(surface, map_surface) and self.map_name != "unknown":
-            # Detected surface doesn't match map zone -> lower confidence
             conf *= 0.7
         if surface != "concrete":
             surface_hint = f" on {surface_to_voice(surface)}"
 
-        # -- Build callout
-        direction_word = _az_to_word(az)
+        # -- Build callout: prefer zone name over directional word
         dist_word = _dist_to_word(dist_m)
-        voice = (
-            f"{shoe_display} footstep {direction_word}, {dist_word}{surface_hint}"
-        )
+        if zone and zone != "Unknown":
+            location = zone                        # "B Long", "Mid Courtyard", etc.
+        else:
+            location = _az_to_word(az)             # fallback: "right", "behind", etc.
+
+        voice = f"{shoe_display} footstep at {location}, {dist_word}{surface_hint}"
 
         overall_conf = float(np.clip(
             (1.0 - abs(event.amplitude_db + 30) / 30.0) * 0.5 + conf * 0.5,
@@ -200,8 +209,10 @@ class AudioCoach:
             azimuth_deg=az,
             map_direction_deg=map_dir,
             estimated_pos=est_pos,
+            zone=zone,
             distance_m=dist_m,
             confidence=overall_conf,
+            audio_clip=mono_window,
             voice_text=voice,
         )
 

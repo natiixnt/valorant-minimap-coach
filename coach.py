@@ -7,6 +7,7 @@ from src.audio.tts import TTSEngine
 from src.audio.audio_coach import AudioCoach
 from src.capture.screen import ScreenCapture
 from src.maps.callouts import enemies_to_callout, pos_to_zone, stack_callout
+from src.telemetry.collector import DataCollector
 from src.vision.ability_detector import AbilityDetector
 from src.vision.ai_analyzer import AIAnalyzer
 from src.vision.detector import MinimapDetector
@@ -38,9 +39,10 @@ class Coach:
         self.detector = MinimapDetector(config)
         self.ability_detector = AbilityDetector(config)
         self.tts = TTSEngine(config)
-        self.ai = AIAnalyzer(config) if config["ai"]["enabled"] else None
+        self.collector = DataCollector(config)
+        self.ai = AIAnalyzer(config, collector=self.collector) if config["ai"]["enabled"] else None
         self._map_override: Optional[str] = config.get("map_override")
-        self.map_detector = MapDetector(config) if not self._map_override else None
+        self.map_detector = MapDetector(config, collector=self.collector) if not self._map_override else None
         self.map_name: str = self._map_override or "unknown"
         self.spike_detector = SpikeDetector()
         self.player_angle_detector = PlayerAngleDetector()
@@ -202,11 +204,27 @@ class Coach:
                 if ai_callout:
                     self.tts.speak(ai_callout)
                     self._ui(self._overlay.update_ai, ai_callout)  # type: ignore[union-attr]
+                    # Collect: minimap frame + AI callout label
+                    self.collector.submit_minimap_callout(
+                        frame.data,
+                        ai_callout,
+                        self.map_name,
+                        result.enemies,
+                    )
 
-            # Pro audio path: footstep direction + agent identification
+            # Pro audio path: footstep direction + zone identification
             for finding in self.audio_coach.poll():
                 self.tts.speak(finding.voice_text, priority=False)
                 self._ui(self._overlay.update_callout, finding.voice_text)  # type: ignore[union-attr]
+                # Collect: audio clip + estimated zone label (soft label, server validates)
+                if finding.zone and finding.audio_clip is not None:
+                    self.collector.submit_footstep_audio(
+                        finding.audio_clip,
+                        finding.zone,
+                        finding.agent,
+                        self.map_name,
+                        finding.surface,
+                    )
 
             self._refresh_map()
             time.sleep(0.1)
