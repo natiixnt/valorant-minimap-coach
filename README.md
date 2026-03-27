@@ -8,10 +8,22 @@ Screen-reading overlay that watches the Valorant minimap and gives voice callout
 
 - **mss** - fast screen capture (~30 fps)
 - **OpenCV** - color-based enemy/teammate blob detection on the minimap
-- **Claude Vision API** - periodic deeper analysis for rotation/flank advice
+- **Claude Vision API** - map auto-detection + periodic deeper analysis for rotation/flank advice
 - **pyttsx3** - offline text-to-speech
+- **customtkinter** - tracker.gg-style always-on-top overlay
 
-Hybrid logic: CV fires instantly when new enemies appear, AI adds context every few seconds. Map is detected automatically from your screen on startup.
+Hybrid logic: CV fires instantly when new enemies appear, AI adds context every few seconds. Map is detected automatically from your screen on startup. Enemy positions fade on the minimap preview after losing sight.
+
+## Download (Windows)
+
+Grab the latest `ValorantCoach.exe` from [Releases](https://github.com/natiixnt/valorant-minimap-coach/releases). No Python needed.
+
+Create a `.env` file next to the exe:
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Then run `ValorantCoach.exe`. On first launch it writes `config.yaml` next to itself.
 
 ## Setup
 
@@ -37,7 +49,7 @@ Alt-tab to Valorant, wait 3 s, then click the top-left and bottom-right corners 
 ## Run
 
 ```bash
-python coach.py
+python coach_app.py
 ```
 
 That's it. On startup the coach detects which map is loaded from your screen and announces it. If you're in the lobby it retries every 10 s until the game starts. It re-checks the map every 5 minutes so it picks up new games without a restart.

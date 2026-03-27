@@ -31,3 +31,6 @@ map_override: null
 map_detection:
   recheck_interval: 300      # seconds between re-checks during a session
   startup_retry_interval: 10 # seconds between retries when not in-game yet
+
+overlay:
+  fade_after: 5.0  # seconds for enemy dot to fade after last detection
