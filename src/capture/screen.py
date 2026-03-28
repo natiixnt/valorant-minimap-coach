@@ -28,6 +28,9 @@ class ScreenCapture:
         frame = np.array(raw)[:, :, :3]
         return MinimapFrame(data=frame, timestamp=time.time(), region=self.region)
 
+    def set_region(self, region: dict) -> None:
+        self.region = region
+
     def close(self):
         self._sct.close()
 

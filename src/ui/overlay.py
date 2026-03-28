@@ -112,6 +112,66 @@ CANVAS_SIZE    = 130
 
 
 # ---------------------------------------------------------------------------
+# Minimap auto-detection
+# ---------------------------------------------------------------------------
+def _detect_minimap_circle(img_bgr: np.ndarray) -> Optional[dict]:
+    """
+    Find Valorant's circular minimap in a full-screen BGR screenshot.
+    The minimap is a circle (dark olive/grey disc) in the top portion of the
+    screen -- either top-left or top-right depending on player settings.
+    Returns an mss-compatible region dict (bounding box) or None.
+    """
+    import cv2
+    h, w = img_bgr.shape[:2]
+
+    # Search the top 55 % of the screen (covers both default positions)
+    roi_h = int(h * 0.55)
+    roi = img_bgr[:roi_h]
+
+    gray    = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (9, 9), 2)
+
+    # Expected minimap radius: 7 %–22 % of screen height
+    min_r = max(30, int(h * 0.07))
+    max_r = int(h * 0.22)
+
+    circles = cv2.HoughCircles(
+        blurred,
+        cv2.HOUGH_GRADIENT,
+        dp=1,
+        minDist=min_r * 2,
+        param1=60,
+        param2=28,
+        minRadius=min_r,
+        maxRadius=max_r,
+    )
+    if circles is None:
+        return None
+
+    # Score candidates: prefer larger radius and corner positions
+    best: Optional[Tuple[int, int, int]] = None
+    best_score = -1.0
+    for cx, cy, r in circles[0]:
+        cx, cy, r = int(cx), int(cy), int(r)
+        x_edge = min(cx, w - cx)          # distance from nearest left/right edge
+        score  = r - 0.3 * x_edge - 0.1 * cy
+        if score > best_score:
+            best_score = score
+            best = (cx, cy, r)
+
+    if best is None:
+        return None
+
+    cx, cy, r = best
+    pad    = 4
+    left   = max(0, cx - r - pad)
+    top    = max(0, cy - r - pad)
+    width  = min(w - left,      2 * (r + pad))
+    height = min(roi_h - top,   2 * (r + pad))
+    return {"top": top, "left": left, "width": width, "height": height}
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 def _ago(ts: float) -> str:
@@ -620,6 +680,8 @@ class SettingsWindow(ctk.CTkToplevel):
         scroll, content = self._make_scroll_area(c)
         scroll.pack(fill="both", expand=True)
 
+        self._build_calibrate(content, c)
+        self._divider(content)
         self._build_api_key(content, c)
         self._divider(content)
         self._build_enemy_team(content, c)
@@ -660,6 +722,122 @@ class SettingsWindow(ctk.CTkToplevel):
             hover_color=c["dim"], font=("Consolas", 9, "bold"),
             corner_radius=2, command=lambda: self._apply_preset("VALORANT"),
         ).pack(side="right", padx=(0, 4), pady=10)
+
+    # ---- minimap calibration ----
+
+    def _build_calibrate(self, parent, c: dict) -> None:
+        self._section(parent, "MINIMAP REGION")
+        ctk.CTkLabel(parent,
+                     text="  AUTO DETECT finds the circular minimap automatically.\n"
+                          "  Switch to Valorant in-game first, then click AUTO.",
+                     text_color=c["dim"], font=("Consolas", 8), justify="left").pack(
+            anchor="w", padx=14, pady=(0, 6))
+
+        self._cal_status = ctk.CTkLabel(parent, text="  not calibrated",
+                                        text_color=c["dim"], font=("Consolas", 8))
+        self._cal_status.pack(anchor="w", padx=14, pady=(0, 4))
+
+        row = tk.Frame(parent, bg=c["bg"])
+        row.pack(fill="x", padx=14, pady=(0, 8))
+
+        ctk.CTkButton(
+            row, text="AUTO DETECT", width=110, height=28,
+            fg_color=c["accent"], text_color=c["bg"],
+            hover_color=_darken(c["accent"]), font=("Consolas", 9, "bold"),
+            corner_radius=2, command=self._run_auto_detect,
+        ).pack(side="left", padx=(0, 6))
+
+        ctk.CTkButton(
+            row, text="MANUAL", width=80, height=28,
+            fg_color=c["panel"], text_color=c["dim"],
+            hover_color=c["dim"], font=("Consolas", 9, "bold"),
+            corner_radius=2, command=self._run_calibration,
+        ).pack(side="left")
+
+        # Show current region if already set
+        saved = load_settings().get("minimap_region")
+        if saved:
+            self._cal_status.configure(
+                text=f"  {saved['width']}x{saved['height']} @ ({saved['left']},{saved['top']})",
+                text_color="#4caf50")
+
+    def _run_auto_detect(self) -> None:
+        import threading as _t
+        self._cal_status.configure(text="  detecting in 3s... switch to Valorant", text_color="#ff9800")
+        self.update()
+
+        def _do():
+            import time, mss
+            time.sleep(3)
+            with mss.mss() as sct:
+                raw = sct.grab(sct.monitors[0])
+            img = np.array(raw)[:, :, :3]
+            region = _detect_minimap_circle(img)
+            if region:
+                save_settings({"minimap_region": region})
+                if hasattr(self._master, "on_minimap_region_change") and self._master.on_minimap_region_change:
+                    self._master.on_minimap_region_change(region)
+                self.after(0, lambda: self._cal_status.configure(
+                    text=f"  {region['width']}x{region['height']} @ ({region['left']},{region['top']})",
+                    text_color="#4caf50"))
+            else:
+                self.after(0, lambda: self._cal_status.configure(
+                    text="  not found -- try MANUAL calibration",
+                    text_color="#f44336"))
+
+        _t.Thread(target=_do, daemon=True).start()
+
+    def _run_calibration(self) -> None:
+        import threading as _t
+        self._cal_status.configure(text="  switch to Valorant now...", text_color="#ff9800")
+        self.update()
+
+        def _do():
+            import time, mss, numpy as np, cv2
+            time.sleep(3)
+
+            # Grab full desktop
+            with mss.mss() as sct:
+                raw = sct.grab(sct.monitors[0])
+            img = np.array(raw)[:, :, :3]
+
+            points = []
+
+            def _on_click(event, x, y, flags, param):
+                if event == cv2.EVENT_LBUTTONDOWN and len(points) < 2:
+                    points.append((x, y))
+                    cv2.circle(img, (x, y), 6, (0, 255, 0), -1)
+                    if len(points) == 2:
+                        cv2.rectangle(img, points[0], points[1], (0, 255, 0), 2)
+                    cv2.imshow(title, img)
+
+            title = "Click: top-left then bottom-right of minimap | any key when done"
+            cv2.imshow(title, img)
+            cv2.setMouseCallback(title, _on_click)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+
+            if len(points) == 2:
+                x1, y1 = points[0]
+                x2, y2 = points[1]
+                region = {
+                    "top":    min(y1, y2),
+                    "left":   min(x1, x2),
+                    "width":  abs(x2 - x1),
+                    "height": abs(y2 - y1),
+                }
+                save_settings({"minimap_region": region})
+                # Notify coach via master callback if available
+                if hasattr(self._master, "on_minimap_region_change") and self._master.on_minimap_region_change:
+                    self._master.on_minimap_region_change(region)
+                self.after(0, lambda: self._cal_status.configure(
+                    text=f"  {region['width']}x{region['height']} @ ({region['left']},{region['top']})",
+                    text_color="#4caf50"))
+            else:
+                self.after(0, lambda: self._cal_status.configure(
+                    text="  cancelled -- need 2 points", text_color="#f44336"))
+
+        _t.Thread(target=_do, daemon=True).start()
 
     # ---- api key ----
 
@@ -1092,12 +1270,13 @@ class OverlayWindow(ctk.CTk):
     def __init__(self, fade_after: float = 5.0) -> None:
         super().__init__()
         self._muted  = False
-        self.on_mute_change:    Optional[Callable[[bool],  None]] = None
-        self.on_voice_change:   Optional[Callable[[str],   None]] = None
-        self.on_voice_preview:  Optional[Callable[[str],   None]] = None
-        self.on_lang_change:          Optional[Callable[[str],       None]] = None
-        self.on_volume_change:        Optional[Callable[[float],     None]] = None
-        self.on_enemy_agents_change:  Optional[Callable[[List[str]], None]] = None
+        self.on_mute_change:            Optional[Callable[[bool],      None]] = None
+        self.on_voice_change:           Optional[Callable[[str],       None]] = None
+        self.on_voice_preview:          Optional[Callable[[str],       None]] = None
+        self.on_lang_change:            Optional[Callable[[str],       None]] = None
+        self.on_volume_change:          Optional[Callable[[float],     None]] = None
+        self.on_enemy_agents_change:    Optional[Callable[[List[str]], None]] = None
+        self.on_minimap_region_change:  Optional[Callable[[dict],      None]] = None
         self._voice_options:   list = []
         self._tracker          = EnemyTracker(fade_after=fade_after)
         self._drag:            dict = {}

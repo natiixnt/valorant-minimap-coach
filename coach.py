@@ -133,9 +133,10 @@ class Coach:
     # ------------------------------------------------------------------
     def set_overlay(self, overlay: "OverlayWindow") -> None:
         self._overlay = overlay
-        overlay.on_mute_change   = self.tts.set_muted
-        overlay.on_volume_change = self.tts.set_volume
-        overlay.on_feedback      = self.collector.submit_feedback
+        overlay.on_mute_change          = self.tts.set_muted
+        overlay.on_volume_change        = self.tts.set_volume
+        overlay.on_feedback             = self.collector.submit_feedback
+        overlay.on_minimap_region_change = self.capture.set_region
 
     def set_callout_lang(self, lang: str) -> None:
         with self._lang_lock:
