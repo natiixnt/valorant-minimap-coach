@@ -684,6 +684,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self._divider(content)
         self._build_api_key(content, c)
         self._divider(content)
+        self._build_hf_status(content, c)
+        self._divider(content)
         self._build_enemy_team(content, c)
         self._divider(content)
         self._build_voice(content, c)
@@ -940,6 +942,87 @@ class SettingsWindow(ctk.CTkToplevel):
                     self._key_status.configure(text=result[0], text_color=result[1])
                     self._test_btn.configure(state="normal")
             self.after(0, _update)
+
+        _t.Thread(target=_run, daemon=True).start()
+
+    # ---- HF data collection status ----
+
+    def _build_hf_status(self, parent, c: dict) -> None:
+        self._section(parent, "DATA COLLECTION")
+        ctk.CTkLabel(parent,
+                     text="  minimap screenshots are uploaded to HuggingFace to improve the AI.\n"
+                          "  Opt-out: set data_collection.enabled: false in config.yaml",
+                     text_color=c["dim"], font=("Consolas", 8), justify="left").pack(
+            anchor="w", padx=14, pady=(0, 6))
+
+        self._hf_status_lbl = ctk.CTkLabel(parent, text="  checking...",
+                                           text_color=c["dim"], font=("Consolas", 8))
+        self._hf_status_lbl.pack(anchor="w", padx=14, pady=(0, 4))
+
+        row = tk.Frame(parent, bg=c["bg"])
+        row.pack(fill="x", padx=14, pady=(0, 8))
+
+        self._hf_test_btn = ctk.CTkButton(
+            row, text="TEST CONNECTION", width=130, height=28,
+            fg_color=c["panel"], text_color=c["dim"],
+            hover_color=c["accent"], font=("Consolas", 9, "bold"),
+            corner_radius=2, command=self._test_hf_connection,
+        )
+        self._hf_test_btn.pack(side="left")
+
+        # Show initial status from collector (if accessible)
+        self.after(500, self._refresh_hf_status)
+
+    def _refresh_hf_status(self) -> None:
+        if not hasattr(self, "_hf_status_lbl"):
+            return
+        collector = getattr(self._master, "_collector", None) or \
+                    getattr(getattr(self._master, "coach", None), "collector", None)
+        # Try to reach the coach via the parent OverlayWindow
+        if collector is None:
+            self._hf_status_lbl.configure(text="  (open from running app to see status)",
+                                          text_color="#4a5568")
+            return
+        ok = collector.last_upload_ok
+        if ok is None:
+            self._hf_status_lbl.configure(text="  connecting to HuggingFace...",
+                                          text_color="#ff9800")
+            self.after(1000, self._refresh_hf_status)
+        elif ok:
+            self._hf_status_lbl.configure(text=f"  connected - repo: {collector._hf_repo}",
+                                          text_color="#4caf50")
+        else:
+            self._hf_status_lbl.configure(text="  connection failed - check token & repo",
+                                          text_color="#f44336")
+
+    def _test_hf_connection(self) -> None:
+        import threading as _t
+        self._hf_status_lbl.configure(text="  testing...", text_color="#ff9800")
+        self._hf_test_btn.configure(state="disabled")
+
+        collector = getattr(self._master, "_collector", None) or \
+                    getattr(getattr(self._master, "coach", None), "collector", None)
+        if collector is None:
+            self._hf_status_lbl.configure(text="  not available", text_color="#f44336")
+            self._hf_test_btn.configure(state="normal")
+            return
+
+        def _run():
+            try:
+                from huggingface_hub import HfApi
+                api = HfApi(token=collector._hf_token or None)
+                api.create_repo(repo_id=collector._hf_repo, repo_type="dataset", exist_ok=True)
+                result = (f"  connected - repo: {collector._hf_repo}", "#4caf50")
+                collector.last_upload_ok = True
+            except Exception as e:
+                result = (f"  failed: {str(e)[:60]}", "#f44336")
+                collector.last_upload_ok = False
+
+            def _upd():
+                if self.winfo_exists():
+                    self._hf_status_lbl.configure(text=result[0], text_color=result[1])
+                    self._hf_test_btn.configure(state="normal")
+            self.after(0, _upd)
 
         _t.Thread(target=_run, daemon=True).start()
 

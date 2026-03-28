@@ -64,8 +64,8 @@ _DEFAULT_HF_REPO = "naithai/valorant-minimap-coach"
 
 class DataCollector:
     _QUEUE_SIZE    = 64
-    _BATCH_SIZE    = 10     # items per HF commit (fewer = more real-time; more = fewer API calls)
-    _BATCH_TIMEOUT = 120.0  # flush at least every N seconds even if batch isn't full
+    _BATCH_SIZE    = 5      # items per HF commit
+    _BATCH_TIMEOUT = 30.0   # flush at least every N seconds even if batch isn't full
     _JPEG_QUALITY  = 80
     _DEDUP_WINDOW  = 20.0   # skip identical frames seen within this many seconds
 
@@ -78,13 +78,27 @@ class DataCollector:
         self._app_version = config.get("app_version", "unknown")
         self._queue: queue.Queue = queue.Queue(maxsize=self._QUEUE_SIZE)
         self._seen: dict[str, float] = {}
+        self.last_upload_ok: Optional[bool] = None   # None=untried, True=ok, False=failed
 
         if self.enabled and self._hf_token:
-            t = threading.Thread(target=self._worker, daemon=True, name="DataCollector")
-            t.start()
-            print(f"[Collector] Active. HF repo: {self._hf_repo}  version: {self._app_version}")
+            threading.Thread(target=self._init_repo, daemon=True, name="CollectorInit").start()
         elif self.enabled:
             print("[Collector] No hf_token in config -- data collection disabled.")
+
+    def _init_repo(self) -> None:
+        """Ensure the HF dataset repo exists, then start the worker thread."""
+        try:
+            from huggingface_hub import HfApi
+            api = HfApi(token=self._hf_token)
+            api.create_repo(repo_id=self._hf_repo, repo_type="dataset", exist_ok=True)
+            print(f"[Collector] HF repo ready: {self._hf_repo}  version: {self._app_version}")
+            self.last_upload_ok = True
+        except Exception as e:
+            print(f"[Collector] HF repo init failed: {e}")
+            self.last_upload_ok = False
+            return
+        t = threading.Thread(target=self._worker, daemon=True, name="DataCollector")
+        t.start()
 
     # ------------------------------------------------------------------
     # Public API
