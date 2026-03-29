@@ -138,6 +138,14 @@ class Coach:
         overlay.on_feedback              = self.collector.submit_feedback
         overlay.on_minimap_region_change = self.capture.set_region
         overlay._collector               = self.collector   # for Settings HF status panel
+        overlay.on_map_override_change   = self.set_map_override
+
+    def set_map_override(self, map_name: Optional[str]) -> None:
+        self._map_override = map_name or None
+        if map_name:
+            self.map_name = map_name
+            self._ui(self._overlay.update_map, map_name)  # type: ignore[union-attr]
+            print(f"[Coach] Map override set: {map_name}")
 
     def set_callout_lang(self, lang: str) -> None:
         with self._lang_lock:

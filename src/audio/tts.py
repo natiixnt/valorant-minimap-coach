@@ -250,6 +250,9 @@ class TTSEngine:
 
     def preview(self, voice_id: str) -> None:
         self.set_voice(voice_id)
+        # Clear cooldown so repeated preview clicks always work
+        with self._spoken_lock:
+            self._last_spoken.pop("Enemy spotted, B site", None)
         self.speak("Enemy spotted, B site", priority=True)
 
     def _worker(self) -> None:

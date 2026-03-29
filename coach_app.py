@@ -94,6 +94,9 @@ def main() -> None:
     saved_enemies = _saved.get("enemy_agents", [])
     if saved_enemies:
         coach.enemy_agents.set_agents(saved_enemies)
+    saved_map = _saved.get("map_override", "")
+    if saved_map:
+        coach.set_map_override(saved_map)
 
     thread = threading.Thread(target=coach.run, daemon=True, name="CoachLoop")
     thread.start()

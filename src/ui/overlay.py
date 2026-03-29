@@ -680,6 +680,8 @@ class SettingsWindow(ctk.CTkToplevel):
         scroll, content = self._make_scroll_area(c)
         scroll.pack(fill="both", expand=True)
 
+        self._build_map_override(content, c)
+        self._divider(content)
         self._build_calibrate(content, c)
         self._divider(content)
         self._build_api_key(content, c)
@@ -724,6 +726,40 @@ class SettingsWindow(ctk.CTkToplevel):
             hover_color=c["dim"], font=("Consolas", 9, "bold"),
             corner_radius=2, command=lambda: self._apply_preset("VALORANT"),
         ).pack(side="right", padx=(0, 4), pady=10)
+
+    # ---- map override ----
+
+    _KNOWN_MAPS = sorted([
+        "ascent", "bind", "haven", "split", "icebox",
+        "lotus", "sunset", "abyss", "breeze", "fracture", "pearl",
+    ])
+
+    def _build_map_override(self, parent, c: dict) -> None:
+        self._section(parent, "MAP")
+        ctk.CTkLabel(parent,
+                     text="  Select map manually if auto-detection fails\n"
+                          "  (auto-detection requires Anthropic API key)",
+                     text_color=c["dim"], font=("Consolas", 8), justify="left").pack(
+            anchor="w", padx=14, pady=(0, 6))
+
+        row = tk.Frame(parent, bg=c["bg"])
+        row.pack(fill="x", padx=14, pady=(0, 8))
+
+        options = ["auto-detect"] + [m.capitalize() for m in self._KNOWN_MAPS]
+        saved_map = load_settings().get("map_override", "")
+        initial = saved_map.capitalize() if saved_map else "auto-detect"
+
+        self._map_var = tk.StringVar(value=initial)
+        self._map_combo = ctk.CTkComboBox(
+            row, values=options, variable=self._map_var,
+            width=160, height=28,
+            fg_color=c["panel"], border_color=c["dim"],
+            text_color=c["text"], font=("Consolas", 9),
+            dropdown_fg_color=c["panel"], dropdown_text_color=c["text"],
+            button_color=c["dim"], button_hover_color=c["accent"],
+            state="readonly",
+        )
+        self._map_combo.pack(side="left")
 
     # ---- minimap calibration ----
 
@@ -1321,6 +1357,13 @@ class SettingsWindow(ctk.CTkToplevel):
         if self._master.on_enemy_agents_change:
             self._master.on_enemy_agents_change(enemy_agents)
 
+        map_override = ""
+        if hasattr(self, "_map_var"):
+            sel = self._map_var.get()
+            map_override = "" if sel == "auto-detect" else sel.lower()
+            if self._master.on_map_override_change:
+                self._master.on_map_override_change(map_override or None)
+
         save_settings({
             "colors":            new_c,
             "voice_id":          voice_id,
@@ -1328,6 +1371,7 @@ class SettingsWindow(ctk.CTkToplevel):
             "anthropic_api_key": api_key,
             "tts_volume":        tts_volume,
             "enemy_agents":      enemy_agents,
+            "map_override":      map_override,
         })
         self.destroy()
 
@@ -1360,6 +1404,7 @@ class OverlayWindow(ctk.CTk):
         self.on_volume_change:          Optional[Callable[[float],     None]] = None
         self.on_enemy_agents_change:    Optional[Callable[[List[str]], None]] = None
         self.on_minimap_region_change:  Optional[Callable[[dict],      None]] = None
+        self.on_map_override_change:    Optional[Callable[[Optional[str]], None]] = None
         self._voice_options:   list = []
         self._tracker          = EnemyTracker(fade_after=fade_after)
         self._drag:            dict = {}
@@ -1441,9 +1486,27 @@ class OverlayWindow(ctk.CTk):
         settings_btn.pack(side="right")
         self._settings_btn = settings_btn
 
+        self._compact = False
+        self._compact_btn = ctk.CTkButton(
+            bar, text="—", width=28, height=28,
+            fg_color="transparent", text_color=c["dim"],
+            hover_color=c["panel"], font=("Consolas", 14, "bold"),
+            corner_radius=2, command=self._toggle_compact,
+        )
+        self._compact_btn.pack(side="right", padx=(0, 2))
+
         for w in (bar, icon, title):
             w.bind("<ButtonPress-1>", self._drag_start)
             w.bind("<B1-Motion>",     self._drag_move)
+
+    def _toggle_compact(self) -> None:
+        self._compact = not self._compact
+        self._compact_btn.configure(text="+" if self._compact else "—")
+        for outer, *_ in self._panel_refs:
+            if self._compact:
+                outer.pack_forget()
+            else:
+                outer.pack(fill="x", pady=(2, 0))
 
     def _panel(self, header: str) -> ctk.CTkFrame:
         c = self._c
