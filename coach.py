@@ -146,6 +146,7 @@ class Coach:
             self.map_name = map_name
             self._ui(self._overlay.update_map, map_name)  # type: ignore[union-attr]
             print(f"[Coach] Map override set: {map_name}")
+            self._schedule_template_save(map_name)
 
     def set_callout_lang(self, lang: str) -> None:
         with self._lang_lock:
@@ -214,12 +215,34 @@ class Coach:
         if self._map_override:
             print(f"[Coach] Map override: {self._map_override}")
             self._ui(self._overlay.update_map, self._map_override)  # type: ignore[union-attr]
+            self._schedule_template_save(self._map_override)
             return
         print("[Coach] Detecting map from screen...")
         detected = self.map_detector.wait_for_map()  # type: ignore[union-attr]
         self.map_name = detected
         self._ui(self._overlay.update_map, detected)  # type: ignore[union-attr]
         self._speak(f"Map detected: {detected}")
+
+    def _schedule_template_save(self, map_name: str) -> None:
+        """Auto-learn: capture a template 45 s after startup so the game is in progress."""
+        if not self.map_detector:
+            return
+        if map_name in self.map_detector._store.learned_maps():
+            return
+        import threading as _t
+        _t.Timer(45.0, self._auto_save_template, args=[map_name]).start()
+        print(f"[Coach] Will auto-save template for '{map_name}' in 45 s...")
+
+    def _auto_save_template(self, map_name: str) -> None:
+        if not self.map_detector or self.map_name != map_name:
+            return
+        try:
+            img = self.map_detector._grab()
+            self.map_detector._store.save(map_name, img)
+            print(f"[Coach] Template saved for '{map_name}'. "
+                  f"Future sessions will auto-detect this map.")
+        except Exception as e:
+            print(f"[Coach] Template auto-save failed: {e}")
 
     def _refresh_map(self) -> None:
         if self._map_override or not self.map_detector:

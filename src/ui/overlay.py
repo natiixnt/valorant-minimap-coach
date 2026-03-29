@@ -737,8 +737,8 @@ class SettingsWindow(ctk.CTkToplevel):
     def _build_map_override(self, parent, c: dict) -> None:
         self._section(parent, "MAP")
         ctk.CTkLabel(parent,
-                     text="  Select map manually if auto-detection fails\n"
-                          "  (auto-detection requires Anthropic API key)",
+                     text="  Select once -- app auto-learns and will detect\n"
+                          "  this map automatically in all future sessions.",
                      text_color=c["dim"], font=("Consolas", 8), justify="left").pack(
             anchor="w", padx=14, pady=(0, 6))
 

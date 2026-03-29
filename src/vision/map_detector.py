@@ -7,6 +7,7 @@ Lifecycle:
 - After all 11 maps are learned: Claude client is never instantiated again.
 """
 import base64
+import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Tuple
@@ -24,7 +25,12 @@ KNOWN_MAPS = {
     "lotus", "sunset", "abyss", "breeze", "fracture", "pearl",
 }
 
-_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "map_templates"
+# Frozen exe: save templates next to the exe (persists across runs).
+# Dev: save in repo root / data / map_templates.
+if getattr(sys, "frozen", False):
+    _TEMPLATES_DIR = Path(sys.executable).parent / "data" / "map_templates"
+else:
+    _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "map_templates"
 _THUMB_W, _THUMB_H = 320, 180
 _MATCH_THRESHOLD = 0.82   # histogram correlation; 1.0 = perfect match
 _MAX_TEMPLATES    = 5     # stored screenshots per map
