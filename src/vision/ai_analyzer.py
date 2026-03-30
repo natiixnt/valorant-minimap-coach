@@ -82,7 +82,16 @@ class AIAnalyzer:
             )
             if not resp.content:
                 return None
+            if resp.stop_reason == "max_tokens":
+                # Response truncated -- likely not a clean callout
+                return None
             callout = resp.content[0].text.strip()
+            if not callout:
+                return None
+            # Reject responses that are clearly explanations, not callouts
+            if len(callout.split()) > 15:
+                print(f"[AI] Response too long ({len(callout.split())} words), discarding")
+                return None
             self._last_sample_ts = int(now)
             return callout
         except Exception as e:
