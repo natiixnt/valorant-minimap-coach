@@ -265,9 +265,12 @@ class Coach:
             self._ui(self._overlay.update_map, new_map)  # type: ignore[union-attr]
             self._speak(f"New map: {new_map}")
             self.audio_coach.map_name = new_map
-            # New game -- reset agent detection and composition
+            # New game -- reset agent detection and all per-game state
             self.agent_detector.reset()
             self.enemy_agents.clear()
+            self.ult_tracker.reset()
+            self.economy.reset()
+            self.heatmap.reset()
 
     # ------------------------------------------------------------------
     # Main loop
