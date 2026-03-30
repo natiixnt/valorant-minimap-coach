@@ -151,7 +151,8 @@ class Coach:
         self._map_override = map_name or None
         if map_name:
             self.map_name = map_name
-            self._ui(self._overlay.update_map, map_name)  # type: ignore[union-attr]
+            if self._overlay:
+                self._ui(self._overlay.update_map, map_name)
             print(f"[Coach] Map override set: {map_name}")
             self._schedule_template_save(map_name)
 
@@ -403,7 +404,9 @@ class Coach:
                 self._ui(self._overlay.update_callout, spike_text)  # type: ignore[union-attr]
                 self._spike_plant_time = time.monotonic()
                 self.round_state.on_spike_planted()
-                self.economy.on_spike_planted()
+                if not self.round_state.on_attack:
+                    # Only enemies (attackers) get the plant bonus when we're defending
+                    self.economy.on_spike_planted()
                 self.audio_coach.on_spike_planted(self._spike_plant_time)
                 self.defuse_advisor.reset()
                 self.spike_detector.confirm_planted(pos)
