@@ -169,6 +169,12 @@ class AudioCoach:
         self._spike_timer.on_spike_planted(plant_time)
         self._defuse_sound.arm()
 
+    def on_round_start(self) -> None:
+        """Clear per-round audio state so previous-round history doesn't bleed in."""
+        self._footstep_det.reset()
+        self._gun_det.reset()
+        self._noise_gate.reset()
+
     def on_spike_resolved(self) -> None:
         """Disarm spike audio detection (defused or detonated)."""
         self._spike_beep.reset()

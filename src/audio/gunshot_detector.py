@@ -147,6 +147,13 @@ class GunDetector:
         self._sample_count += n
         return events
 
+    def reset(self) -> None:
+        """Call at round start to clear background RMS and debounce state."""
+        self._bg_rms_sq   = 0.0
+        self._bg_count    = 0
+        self._last_onset  = -_MIN_GAP_N
+        self._sample_count = 0
+
     def _azimuth(self, left: np.ndarray, right: np.ndarray) -> float:
         n = min(len(left), len(right), _ANALYSIS_N)
         l = left[:n]

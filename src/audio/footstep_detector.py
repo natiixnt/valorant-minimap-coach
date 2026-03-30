@@ -157,6 +157,14 @@ class FootstepDetector:
         self._sample_counter += n
         return events
 
+    def reset(self) -> None:
+        """Call at round start to clear accumulated flux history and debounce state."""
+        self._prev_spectrum = None
+        self._flux_history.clear()
+        self._last_onset_frame = -_MIN_ONSET_SAMPLES - 1
+        self._frame_count = 0
+        self._sample_counter = 0
+
 
 # ------------------------------------------------------------------
 def _spectral_centroid(spectrum: np.ndarray, sr: int) -> float:
