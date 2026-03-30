@@ -105,7 +105,7 @@ class GunDetector:
 
             gap_since_last = (self._sample_count + pos) - self._last_onset
 
-            if (peak > bg_rms * _AMPLITUDE_MULT
+            if (peak > bg_rms * _SUPPRESSED_MULT
                     and gap_since_last >= _MIN_GAP_N
                     and bg_rms > 1e-7):
                 # Onset confirmed -- analyze window
@@ -127,7 +127,7 @@ class GunDetector:
                     dist_hint = "far"
 
                 amp_db = float(20 * np.log10(peak + 1e-9))
-                suppressed = peak < bg_rms * _SUPPRESSED_MULT * 3
+                suppressed = peak < bg_rms * _AMPLITUDE_MULT
 
                 voice = self._build_voice(az, dist_hint, suppressed)
                 t = (self._sample_count + pos) / SAMPLE_RATE
