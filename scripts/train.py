@@ -66,7 +66,11 @@ def load_dataset(data_dir: str, min_positive_ratio: float = 0.0):
         if not meta_path.exists():
             continue
 
-        meta  = json.loads(meta_path.read_text())
+        try:
+            meta = json.loads(meta_path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            log.warning(f"Skipping {meta_path}: {e}")
+            continue
         label = meta.get("label", "")
         if not label:
             continue
@@ -107,7 +111,11 @@ class MinimapDataset:
     def __getitem__(self, idx: int):
         from PIL import Image
         s     = self.samples[idx]
-        image = Image.open(s["image_path"]).convert("RGB")
+        try:
+            image = Image.open(s["image_path"]).convert("RGB")
+        except Exception as e:
+            log.warning(f"Failed to load image {s['image_path']}: {e} -- using blank")
+            image = Image.new("RGB", (224, 224))
 
         parts = [f"Valorant minimap, map {s['map']}." if s["map"] else "Valorant minimap."]
         if s.get("spike_active"):
