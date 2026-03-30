@@ -485,10 +485,22 @@ _GRID = [
 
 
 def pos_to_zone(x: float, y: float, map_name: str) -> str:
-    for zone in MAP_ZONES.get(map_name.lower(), []):
+    zones = MAP_ZONES.get(map_name.lower(), [])
+    for zone in zones:
         if (zone.x_range[0] <= x < zone.x_range[1]
                 and zone.y_range[0] <= y < zone.y_range[1]):
             return zone.name
+    # Position is slightly outside all zone boundaries (e.g. audio estimate near edge).
+    # Find the nearest zone by center distance before falling back to the generic 9-grid.
+    if zones:
+        best_zone = min(
+            zones,
+            key=lambda z: (
+                (x - (z.x_range[0] + z.x_range[1]) * 0.5) ** 2
+                + (y - (z.y_range[0] + z.y_range[1]) * 0.5) ** 2
+            ),
+        )
+        return best_zone.name
     x = max(0.0, min(1.0, x))
     y = max(0.0, min(1.0, y))
     col = min(int(x * 3), 2)

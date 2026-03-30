@@ -196,6 +196,7 @@ class Coach:
         self._ui(self._overlay.hide_defuse_progress)  # type: ignore[union-attr]
         self._stack_frames.clear()
         self._stack_warned.clear()
+        self._recent_ai_callouts = []
         self._audio_round_ended = False
         self._spike_armed = False
         ult_warn = self.ult_tracker.update(self.round_state.round_num)
@@ -378,16 +379,13 @@ class Coach:
         if team:
             avg_tx = sum(x for x, y in team) / len(team)
             avg_ty = sum(y for x, y in team) / len(team)
-            self.audio_coach.player_pos = (
-                max(0.05, min(0.95, avg_tx)),
-                max(0.05, min(0.95, avg_ty)),
-            )
+            self.audio_coach.player_pos = (float(avg_tx), float(avg_ty))
         elif result.enemies:
             avg_ex = sum(x for x, y in result.enemies) / len(result.enemies)
             avg_ey = sum(y for x, y in result.enemies) / len(result.enemies)
             self.audio_coach.player_pos = (
-                max(0.1, min(0.9, 1.0 - avg_ex)),
-                max(0.1, min(0.9, 1.0 - avg_ey)),
+                float(1.0 - avg_ex),
+                float(1.0 - avg_ey),
             )
 
         # -- Spike detection (two-phase: minimap candidate → audio beep confirms)

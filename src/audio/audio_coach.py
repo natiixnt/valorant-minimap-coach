@@ -334,11 +334,10 @@ class AudioCoach:
         map_dir = audio_az_to_map_direction(az, player_facing)
 
         scale = _M_PER_UNIT.get(map_name.lower(), _DEFAULT_M_PER_UNIT)
-        est_pos = (0.5, 0.5)
-        if player_pos != (0.5, 0.5):
-            est_pos = direction_to_map_pos(
-                player_pos, map_dir, dist_m, scale_m_per_unit=scale
-            )
+        pos_is_default = player_pos == (0.5, 0.5)
+        est_pos = direction_to_map_pos(
+            player_pos, map_dir, dist_m, scale_m_per_unit=scale
+        )
 
         # -- Shoe type classification
         # Note: Valorant agents do NOT have unique footstep sounds per Riot.
@@ -387,6 +386,11 @@ class AudioCoach:
             (1.0 - abs(event.amplitude_db + 30) / 30.0) * 0.5 + conf * 0.5,
             0.0, 1.0
         ))
+        # When player position is the default (0.5, 0.5) the projected enemy position
+        # is only meaningful in direction, not absolute coordinates. Reduce confidence
+        # so callers can distinguish a well-anchored estimate from a direction-only one.
+        if pos_is_default:
+            overall_conf *= 0.6
 
         return AudioFinding(
             agent=shoe_type,

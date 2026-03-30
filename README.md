@@ -2,6 +2,8 @@
 
 Screen-reading + audio-listening overlay that acts as a real-time coaching assistant during Valorant matches. Reads pixels from your screen and audio from your speakers -- never touches game memory. Vanguard watches for memory injection and kernel hooks, not screen capture or audio loopback APIs.
 
+**[Project Wiki](../../wiki)** - full technical documentation: audio pipeline, direction estimation, footstep/gunshot detection, map detection, TTS system, and changelog.
+
 ---
 
 ## Features
@@ -29,11 +31,11 @@ All audio processing runs locally at 48 kHz via system loopback (WASAPI on Windo
 | Feature | What it does |
 |---|---|
 | **Footstep detection** | Bandpass spectral flux onset detection (200-800 Hz thud band). Announces zone + distance |
-| **3D direction estimation** | ITD (interaural time delay via cross-correlation) + ILD (level ratio) fused 60/40 to estimate azimuth. Zone name used as callout instead of "left/right" |
+| **3D direction estimation** | Frequency-weighted GCC-PHAT ITD + multi-band ILD (3 bands, 1-8 kHz) fused with confidence weighting. Sub-sample parabolic interpolation gives ~0.5-1° precision. Front/back ambiguity resolved via HRTF pinna notch (4-10 kHz). Stereo balance blended as a third cue (18%) |
 | **Distance estimation** | Amplitude-based rough estimate. Note: Riot uses flat attenuation by design, so amplitude is unreliable at long range |
 | **Shoe-type classification** | RandomForest on 30-dim MFCC features classifies footsteps as heavy / medium / light shoe type. Per-agent audio does not exist in Valorant (confirmed by Riot) |
-| **Surface detection** | Spectral centroid of footstep classifies surface: carpet / wood / concrete / metal |
-| **Gunshot detection** | Wideband onset (500-8 kHz, >30x amplitude spike). Estimates direction and suppressor status (suppressed = peak <24x threshold) |
+| **Surface detection** | Multi-feature classifier: spectral centroid + 85% rolloff + zero-crossing rate. Classifies surface as carpet / wood / concrete / metal |
+| **Gunshot detection** | Wideband onset (500-8 kHz, >30x amplitude spike). GCC-PHAT + high-band ILD direction estimate. DRR-based distance hint (close/medium/far). Suppressor detection + burst clustering |
 | **Noise gate** | Suppresses gunshot/explosion transients before footstep detection to eliminate false positives |
 | **Round audio events** | Detects round-start horn and win/loss jingles without reading HUD |
 | **Spike beep tracking** | Detects spike beep events; estimates remaining time via power-law IBI model (secondary to wall clock) |

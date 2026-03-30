@@ -93,6 +93,20 @@ class ZoneTracker:
         for slot_id, ei in matched_slots.items():
             slot = self._slots[slot_id]
             new_zone = zones[ei]
+
+            # If this slot was missing for more than 1 second before being matched again,
+            # the enemy that disappeared and a new one that appeared nearby are likely
+            # different players. Reset zone history so we don't announce a false
+            # "moving from OldZone to NewZone" where OldZone belonged to the previous enemy.
+            if now - slot["last_seen"] > 1.0:
+                slot["zone"] = new_zone
+                slot["pending_zone"] = None
+                slot["pending_count"] = 0
+                slot["last_announce_t"] = 0.0
+                slot["pos"] = enemies[ei]
+                slot["last_seen"] = now
+                continue
+
             slot["pos"] = enemies[ei]
             slot["last_seen"] = now
 
