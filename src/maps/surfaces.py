@@ -37,8 +37,8 @@ _SURFACES: dict[str, List[SurfaceZone]] = {
         (0.05, 0.35, 0.05, 0.45, "concrete"),
         # B garage / hookah - concrete
         (0.35, 0.65, 0.05, 0.40, "concrete"),
-        # A short / cave - stone
-        (0.05, 0.35, 0.55, 0.95, "stone"),
+        # A short / cave - concrete
+        (0.05, 0.35, 0.55, 0.95, "concrete"),
         # A site lamps - carpet/wood
         (0.60, 0.95, 0.55, 0.95, "wood"),
         # Teleporters - metal grating
