@@ -180,7 +180,7 @@ class _TemplateStore:
         # Evict oldest file if at capacity
         existing = sorted(_TEMPLATES_DIR.glob(f"{map_name}_*.jpg"))
         while len(existing) >= _MAX_TEMPLATES:
-            existing[0].unlink()
+            existing[0].unlink(missing_ok=True)
             existing = existing[1:]
 
         path = _TEMPLATES_DIR / f"{map_name}_{int(time.time())}.jpg"

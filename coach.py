@@ -228,9 +228,12 @@ class Coach:
             return
         print("[Coach] Detecting map from screen...")
         detected = self.map_detector.wait_for_map()  # type: ignore[union-attr]
-        self.map_name = detected
-        self._ui(self._overlay.update_map, detected)  # type: ignore[union-attr]
-        self._speak(f"Map detected: {detected}")
+        if detected:
+            self.map_name = detected
+            self._ui(self._overlay.update_map, detected)  # type: ignore[union-attr]
+            self._speak(f"Map detected: {detected}")
+        else:
+            print("[Coach] Map detection timed out -- using 'unknown'")
 
     def _schedule_template_save(self, map_name: str) -> None:
         """Auto-learn: capture a template 45 s after startup so the game is in progress."""
