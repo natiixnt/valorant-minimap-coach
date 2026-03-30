@@ -415,10 +415,11 @@ class Coach:
                 self.spike_detector.confirm_planted(pos)
 
         # -- Retake advisor (post-plant phase)
-        if self.spike_detector.is_planted and self.spike_detector.planted_pos and team:
+        planted_pos = self.spike_detector.planted_pos   # snapshot: audio thread may reset() concurrently
+        if self.spike_detector.is_planted and planted_pos and team:
             time_since_plant = time.monotonic() - self._spike_plant_time
             advice = self.retake.advise(
-                self.spike_detector.planted_pos, team,
+                planted_pos, team,
                 self.map_name, time_since_plant,
             )
             if advice:
@@ -426,13 +427,13 @@ class Coach:
                 self._ui(self._overlay.update_callout, advice)  # type: ignore[union-attr]
 
         # -- Defuse feasibility (post-plant phase)
-        if self.spike_detector.is_planted and self.spike_detector.planted_pos:
+        if self.spike_detector.is_planted and planted_pos:
             remaining = self.audio_coach.spike_timer.remaining()
             if remaining is not None and remaining > 0:
                 # Estimate travel time to spike from player position
                 spike_zone = pos_to_zone(
-                    self.spike_detector.planted_pos[0],
-                    self.spike_detector.planted_pos[1],
+                    planted_pos[0],
+                    planted_pos[1],
                     self.map_name,
                 )
                 travel = self.retake._rank_teammates(
