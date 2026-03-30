@@ -182,6 +182,7 @@ class Coach:
         self.defuse_advisor.reset()
         self.enemy_agents.new_round()
         self.audio_coach.on_spike_resolved()
+        self.audio_coach.on_round_start()
 
         # Round 1: auto-detect enemy agents from HUD portrait strip
         if self.round_state.round_num == 1:
@@ -307,7 +308,9 @@ class Coach:
         rs_event = self.round_state.update(result.enemy_count, spike_planted)
 
         if rs_event == "round_end" and not self._audio_round_ended:
-            # Fallback: audio callback wasn't triggered, update economy here
+            # Fallback: audio callback wasn't triggered, update economy here.
+            # Set flag first to block _on_round_end_audio if it fires late.
+            self._audio_round_ended = True
             our_win = not spike_planted
             self.economy.on_round_end(our_win=our_win)
             self.ult_tracker.on_round_end(self.round_state.round_num)
