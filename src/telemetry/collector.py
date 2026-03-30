@@ -334,7 +334,9 @@ class DataCollector:
 
     @staticmethod
     def _encode_jpg(img: np.ndarray) -> bytes:
-        _, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, DataCollector._JPEG_QUALITY])
+        ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, DataCollector._JPEG_QUALITY])
+        if not ok:
+            raise RuntimeError("cv2.imencode failed for collector image")
         return buf.tobytes()
 
     @staticmethod
