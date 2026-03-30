@@ -134,6 +134,7 @@ class RoundState:
             # Auto-advance to buy phase after a short pause
             if elapsed >= 7.0:
                 self._transition(State.BUY_PHASE)
+                self._finished = False
 
         self._prev_enemy_count = enemy_count
         return event
