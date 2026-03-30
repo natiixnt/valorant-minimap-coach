@@ -1,3 +1,4 @@
+import threading
 import time
 from typing import TYPE_CHECKING, List, Optional
 
@@ -115,7 +116,8 @@ class Coach:
         self._prev_enemy_count   = 0
         self._prev_team: List    = []
         self._callout_lang       = "EN"
-        self._lang_lock          = __import__("threading").Lock()
+        self._lang_lock          = threading.Lock()
+        self._template_timer: Optional[threading.Timer] = None
         self._stack_frames: dict = {}
         self._stack_warned: set  = set()
         self._spike_plant_time   = 0.0
@@ -136,7 +138,6 @@ class Coach:
         overlay.on_mute_change           = self.tts.set_muted
         overlay.on_volume_change         = self.tts.set_volume
         overlay.on_feedback              = self.collector.submit_feedback
-        overlay.on_minimap_region_change = self.capture.set_region
         overlay._collector               = self.collector
         overlay.on_map_override_change   = self.set_map_override
         overlay.on_minimap_region_change = self._on_minimap_region_change
@@ -235,8 +236,8 @@ class Coach:
             return
         if map_name in self.map_detector._store.learned_maps():
             return
-        import threading as _t
-        _t.Timer(45.0, self._auto_save_template, args=[map_name]).start()
+        self._template_timer = threading.Timer(45.0, self._auto_save_template, args=[map_name])
+        self._template_timer.start()
         print(f"[Coach] Will auto-save template for '{map_name}' in 45 s...")
 
     def _auto_save_template(self, map_name: str) -> None:
@@ -281,8 +282,8 @@ class Coach:
                 self._tick()
             except Exception as e:
                 print(f"[Coach] Tick error: {e}")
-            time.sleep(self._perf.sleep_time())
             self._perf.tick_end()
+            time.sleep(self._perf.sleep_time())
 
         self._shutdown()
 
@@ -348,7 +349,7 @@ class Coach:
 
         # -- UI: active utility
         active_abs = [
-            {"display": sig["display"], "color": sig["color"], "position": (0.5, 0.5)}
+            {"display": sig["display"], "color": sig["color"], "position": sig["position"]}
             for sig in self.ability_detector.active.values()
         ]
         self._ui(self._overlay.update_utility, active_abs)  # type: ignore[union-attr]
@@ -543,6 +544,8 @@ class Coach:
         if self._shutdown_done:
             return
         self._shutdown_done = True
+        if self._template_timer:
+            self._template_timer.cancel()
         self.audio_coach.stop()
         self.tts.stop()
         self.capture.close()
