@@ -41,7 +41,7 @@ from collections import deque
 from typing import List, Optional, Tuple
 
 import numpy as np
-from scipy.signal import butter, sosfilt
+from scipy.signal import butter, sosfilt, sosfilt_zi
 
 from src.audio.capture import SAMPLE_RATE
 
@@ -111,12 +111,14 @@ class SpikeBeepDetector:
         self._long_rms: float = 1e-6        # slowly-updating background level
         self._last_beep_t: float = 0.0      # time.monotonic() of last detected beep
         self._active: bool = False           # True while in spike round
+        self._zi_bp = sosfilt_zi(_BP_SOS) * 0.0   # IIR filter state across chunks
 
     def reset(self) -> None:
         """Call when round starts (no spike planted)."""
         self._long_rms = 1e-6
         self._last_beep_t = 0.0
         self._active = False
+        self._zi_bp = sosfilt_zi(_BP_SOS) * 0.0
 
     def arm(self) -> None:
         """Call when spike is planted -- start listening for beeps."""
@@ -130,7 +132,7 @@ class SpikeBeepDetector:
         if not self._active or len(mono) < _BEEP_WIN:
             return []
 
-        filtered = sosfilt(_BP_SOS, mono)
+        filtered, self._zi_bp = sosfilt(_BP_SOS, mono, zi=self._zi_bp)
         beeps: List[float] = []
         now = time.monotonic()
 
@@ -257,12 +259,14 @@ class DefuseSoundDetector:
         self._last_onset_t: float = 0.0   # prevents cooldown re-trigger
         # Public: read by audio_coach → coach.py → overlay
         self.onset_t: Optional[float] = None
+        self._zi_defuse = sosfilt_zi(_DEFUSE_BP_SOS) * 0.0  # IIR filter state across chunks
 
     def reset(self) -> None:
         self._long_rms = 1e-6
         self._armed = False
         self._last_onset_t = 0.0
         self.onset_t = None
+        self._zi_defuse = sosfilt_zi(_DEFUSE_BP_SOS) * 0.0
 
     def arm(self) -> None:
         """Call when spike is planted -- start listening for defuse start."""
@@ -281,7 +285,7 @@ class DefuseSoundDetector:
         if now - self._last_onset_t < _DEFUSE_COOLDOWN:
             return
 
-        filtered = sosfilt(_DEFUSE_BP_SOS, mono)
+        filtered, self._zi_defuse = sosfilt(_DEFUSE_BP_SOS, mono, zi=self._zi_defuse)
 
         step = _DEFUSE_WIN // 2
         for start in range(0, len(filtered) - _DEFUSE_WIN + 1, step):

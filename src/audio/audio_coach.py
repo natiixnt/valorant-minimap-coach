@@ -283,7 +283,7 @@ class AudioCoach:
             shoe_display = "enemy"
         else:
             # Narrow down by enemy team composition if configured
-            tracker = self._enemy_agents
+            tracker = self.enemy_agents   # thread-safe property
             narrowed = tracker.callout_for_shoe_type(shoe_type) if tracker else None
             if narrowed:
                 shoe_display = narrowed          # e.g. "Breach" or "Breach or Brimstone"
