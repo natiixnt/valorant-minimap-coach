@@ -106,7 +106,7 @@ class RoundState:
                 event = "round_end"
             else:
                 # Heuristic: enemies suddenly gone after being visible
-                if self._prev_enemy_count >= 2 and enemy_count == 0:
+                if self._prev_enemy_count >= 1 and enemy_count == 0:
                     self._clear_ticks += 1
                     if self._clear_ticks >= _CLEAR_CONFIRM_TICKS:
                         self._transition(State.ROUND_END)
