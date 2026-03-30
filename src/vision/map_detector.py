@@ -72,17 +72,21 @@ class _RadarStore:
         for map_name, url in _RADAR_URLS.items():
             path = _RADAR_DIR / f"{map_name}.png"
             if not path.exists():
+                tmp = path.with_suffix(".tmp")
                 try:
-                    tmp = path.with_suffix(".tmp")
                     old_timeout = socket.getdefaulttimeout()
                     socket.setdefaulttimeout(10)
                     try:
                         urllib.request.urlretrieve(url, tmp)
                     finally:
                         socket.setdefaulttimeout(old_timeout)
+                    # Validate before committing: corrupt/truncated PNG returns None
+                    if cv2.imread(str(tmp)) is None:
+                        raise ValueError("downloaded file is not a readable image")
                     tmp.rename(path)
                 except Exception as e:
                     print(f"[RadarStore] Download failed for {map_name}: {e}")
+                    tmp.unlink(missing_ok=True)
                     continue
             img = cv2.imread(str(path))
             if img is not None:
