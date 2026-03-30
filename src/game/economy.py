@@ -71,13 +71,12 @@ class EconomyTracker:
         kills_by_us: estimated kills (each worth 200 creds to enemies if lost).
         """
         if our_win:
-            # We won: enemies get loss bonus, we get 3000 win
+            # We won: enemies get loss bonus, we get win bonus + kill bonuses
             self._enemy_loss_streak += 1
             streak_idx = min(self._enemy_loss_streak - 1, len(_LOSS_BONUS) - 1)
             loss = _LOSS_BONUS[streak_idx]
             self._enemy_credits = max(0, self._enemy_credits - 3500) + loss
-            # Deduct kills from enemy economy (rough: assume ~3500 per full buy)
-            self._our_credits = min(9000, self._our_credits + _WIN_BONUS)
+            self._our_credits = min(9000, self._our_credits + _WIN_BONUS + kills_by_us * _ROUND_BONUS_KILL)
             self._our_loss_streak = 0
         else:
             # We lost: enemies get win bonus, we get loss bonus
