@@ -489,6 +489,8 @@ def pos_to_zone(x: float, y: float, map_name: str) -> str:
         if (zone.x_range[0] <= x < zone.x_range[1]
                 and zone.y_range[0] <= y < zone.y_range[1]):
             return zone.name
+    x = max(0.0, min(1.0, x))
+    y = max(0.0, min(1.0, y))
     col = min(int(x * 3), 2)
     row = min(int(y * 3), 2)
     return _GRID[row][col]
