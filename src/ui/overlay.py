@@ -1615,7 +1615,7 @@ class OverlayWindow(ctk.CTk):
         """
         c = self._c
         p = self._panel("DEFUSING")
-        self._defuse_panel = p
+        self._defuse_panel = self._panel_refs[-1][0]  # outer frame (shown/hidden as a unit)
 
         # Single-row label: left="DEFUSING", right="~XX%"
         lbl_row = ctk.CTkFrame(p, fg_color="transparent")
@@ -1641,7 +1641,7 @@ class OverlayWindow(ctk.CTk):
         self._defuse_cv.pack(padx=self._DB_PAD, pady=(0, 8))
 
         self._defuse_visible = False
-        p.pack_forget()
+        self._defuse_panel.pack_forget()
 
     def _redraw_defuse_bar(self, pct: float) -> None:
         """Redraw the canvas bar for the given fraction (0.0-1.0)."""
@@ -1688,7 +1688,7 @@ class OverlayWindow(ctk.CTk):
     def _build_ai_panel(self) -> None:
         c = self._c
         p = self._panel("AI INSIGHT")
-        self._ai_panel_ref = p   # used by update_defuse_progress for pack ordering
+        self._ai_panel_ref = self._panel_refs[-1][0]  # outer frame; used by update_defuse_progress for pack ordering
         self._ai_lbl = ctk.CTkLabel(p, text="", text_color=c["dim"],
                                     font=FONT_MONO, wraplength=218, justify="left")
         self._ai_lbl.pack(anchor="w", padx=10, pady=(0, 4))
@@ -1777,7 +1777,7 @@ class OverlayWindow(ctk.CTk):
         self._fb_up.configure(fg_color=c["panel"], text_color=c["dim"])
         self._fb_dn.configure(fg_color=c["panel"], text_color=c["dim"])
         self._defuse_title.configure(text_color=c["dim"])
-        self._defuse_cv.configure(bg=c["canvas_bg"])
+        self._defuse_cv.configure(bg=c["bg"])
         self._bottombar.configure(fg_color=c["title"])
         self._mute_btn.configure(
             fg_color=c["accent"] if not self._muted else c["panel"],
