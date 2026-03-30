@@ -64,7 +64,7 @@ class PlayerAngleDetector:
             mask = cv2.inRange(hsv, _WHITE_LOWER, _WHITE_UPPER)
 
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2:]
 
         best = None
         best_area = 0.0

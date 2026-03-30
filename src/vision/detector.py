@@ -44,7 +44,7 @@ class MinimapDetector:
             mask = cv2.bitwise_or(mask, cv2.inRange(hsv, lower2, upper2))
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel)
 
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2:]
         h, w = hsv.shape[:2]
         positions = []
         for cnt in contours:

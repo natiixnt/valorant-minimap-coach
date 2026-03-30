@@ -57,7 +57,7 @@ class SpikeDetector:
         hsv = cv2.cvtColor(frame.data, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, _SPIKE_LOWER, _SPIKE_UPPER)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2:]
 
         h, w = frame.data.shape[:2]
         best: Optional[Tuple[float, float]] = None

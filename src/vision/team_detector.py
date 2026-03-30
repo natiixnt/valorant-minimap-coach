@@ -36,7 +36,7 @@ class TeamDetector:
         hsv = cv2.cvtColor(frame.data, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, self._lower, self._upper)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, _KERNEL)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2:]
 
         h, w = frame.data.shape[:2]
         candidates = []
