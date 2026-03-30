@@ -44,13 +44,17 @@ _FLUX_THRESHOLD_K = 2.5     # threshold = median + k * MAD
 _MIN_ONSET_SEC = 0.12       # 120 ms minimum gap between onsets
 _MIN_ONSET_SAMPLES = int(_MIN_ONSET_SEC * SAMPLE_RATE / HOP_SIZE)  # in frames (recalculated at 48 kHz)
 
-# Surface spectral centroid breakpoints (Hz)
-_SURFACE_THRESHOLDS = [
-    (350,  "carpet"),    # < 350 Hz
-    (650,  "wood"),      # 350-650 Hz
-    (1100, "concrete"),  # 650-1100 Hz
-    (float("inf"), "metal"),   # > 1100 Hz
-]
+# Multi-feature surface classification thresholds.
+# Using three features (centroid, rolloff, ZCR) instead of centroid alone resolves
+# cases where e.g. a hollow wood thump and a concrete step share similar centroids
+# but differ in how broadly their energy is distributed (rolloff) and how noisy
+# the waveform is (ZCR -- metal rings with rapid sign changes, carpet is smooth).
+_CARPET_MAX_CENTROID  = 450    # Hz: carpet absorbs high frequencies, centroid sits very low
+_CARPET_MAX_ROLLOFF   = 1500   # Hz: 85% of carpet energy is below 1.5 kHz
+_METAL_MIN_CENTROID   = 1100   # Hz: metallic ring shifts spectral weight above 1 kHz
+_METAL_MIN_ZCR        = 0.12   # ratio: rapid waveform oscillations (ring) produce many sign flips
+_WOOD_MAX_CENTROID    = 950    # Hz: resonant hollow thump stays mid-range (above carpet, below metal)
+_WOOD_MAX_ROLLOFF     = 4000   # Hz: broader than carpet but narrower than concrete/metal spread
 
 
 @dataclass
@@ -90,6 +94,8 @@ class FootstepDetector:
         left, right = stereo[0], stereo[1]
         mono = (left + right) * 0.5
 
+        # sosfilt without zi: stateless per call - each 700 ms chunk is processed
+        # independently so there is no cross-chunk signal to preserve filter state for.
         # Band-pass filter
         mono_bp = sosfilt(self._sos, mono)
 
@@ -110,7 +116,12 @@ class FootstepDetector:
             self._prev_spectrum = spectrum
             self._flux_history.append(flux)
 
-            # Adaptive threshold
+            # Adaptive threshold using MAD (Median Absolute Deviation).
+            # MAD = median(|x_i - median(x)|); it is the median analog of std deviation
+            # and is far more resistant to outliers (like a loud gunshot frame) than mean/std.
+            # The 1.4826 factor is the consistency constant that makes MAD a statistically
+            # consistent estimator of sigma for a normal distribution (1/qnorm(0.75) ≈ 1.4826),
+            # so that (k * MAD * 1.4826) behaves like k standard deviations above the median.
             if len(self._flux_history) >= 10:
                 arr = np.array(self._flux_history)
                 med = float(np.median(arr))
@@ -119,6 +130,9 @@ class FootstepDetector:
             else:
                 threshold = 1e9  # not enough history yet
 
+            # Use frame count rather than wall time for the debounce gap: frame count is
+            # deterministic regardless of system load or sleep jitter, so the 120 ms
+            # minimum onset gap stays exact even if the analysis thread runs behind.
             frames_since_last = self._frame_count - self._last_onset_frame
 
             if flux > threshold and frames_since_last >= _MIN_ONSET_SAMPLES and threshold > 0:
@@ -126,11 +140,10 @@ class FootstepDetector:
                 sample_abs = self._sample_counter + pos
                 time_sec = sample_abs / SAMPLE_RATE
 
-                # Classify surface from full-spectrum centroid
-                full_spec = np.abs(np.fft.rfft(mono[pos: pos + FRAME_SIZE]
-                                                * _HANNING_WINDOW))
-                centroid_hz = _spectral_centroid(full_spec, SAMPLE_RATE)
-                surface = _classify_surface(centroid_hz)
+                # Classify surface using centroid + rolloff + zero-crossing rate
+                full_frame = mono[pos: pos + FRAME_SIZE]
+                full_spec  = np.abs(np.fft.rfft(full_frame * _HANNING_WINDOW))
+                surface = _classify_surface_multi(full_spec, full_frame)
 
                 # Amplitude
                 rms = float(np.sqrt(np.mean(frame ** 2)) + 1e-9)
@@ -174,8 +187,55 @@ def _spectral_centroid(spectrum: np.ndarray, sr: int) -> float:
     return float(np.dot(_FREQ_BINS, spectrum) / total)
 
 
-def _classify_surface(centroid_hz: float) -> str:
-    for threshold, label in _SURFACE_THRESHOLDS:
-        if centroid_hz < threshold:
-            return label
-    return "metal"
+def _spectral_rolloff(spectrum: np.ndarray, sr: int, roll_percent: float = 0.85) -> float:
+    """Frequency below which roll_percent of total spectral energy lies.
+
+    Low rolloff: energy concentrated in low frequencies (carpet, heavy thud).
+    High rolloff: energy spread broadly across spectrum (concrete, metal).
+    """
+    total = float(np.sum(spectrum))
+    if total < 1e-12:
+        return 0.0
+    cumsum = np.cumsum(spectrum)
+    idx = int(np.searchsorted(cumsum, total * roll_percent))
+    idx = min(idx, len(_FREQ_BINS) - 1)
+    return float(_FREQ_BINS[idx])
+
+
+def _zero_crossing_rate(frame: np.ndarray) -> float:
+    """Normalized rate of sign changes in the time-domain signal.
+
+    High ZCR: noisy, clangy waveform (metal surfaces ring with rapid oscillations).
+    Low ZCR: smooth, tonal waveform (carpet absorbs high-frequency oscillations).
+    """
+    if len(frame) < 2:
+        return 0.0
+    return float(np.sum(np.abs(np.diff(np.sign(frame)))) / (2.0 * len(frame)))
+
+
+def _classify_surface_multi(spectrum: np.ndarray, frame: np.ndarray) -> str:
+    """Multi-feature surface classification using centroid, rolloff, and ZCR.
+
+    Three features used because centroid alone is ambiguous:
+    - A hollow wood thump and a concrete impact can share similar centroids
+      but differ in rolloff (wood resonates broadly, concrete is more impulsive)
+    - Metal and concrete both have high centroids but metal has a much higher ZCR
+      due to the metallic ring producing rapid waveform oscillations
+    """
+    centroid_hz = _spectral_centroid(spectrum, SAMPLE_RATE)
+    rolloff_hz  = _spectral_rolloff(spectrum, SAMPLE_RATE)
+    zcr         = _zero_crossing_rate(frame)
+
+    # Carpet: heavily absorbed surface, very little high-frequency content
+    if centroid_hz < _CARPET_MAX_CENTROID and rolloff_hz < _CARPET_MAX_ROLLOFF:
+        return "carpet"
+
+    # Metal: hard ringing surface, bright spectrum, many waveform sign changes
+    if centroid_hz > _METAL_MIN_CENTROID and zcr > _METAL_MIN_ZCR:
+        return "metal"
+
+    # Wood: resonant thump, moderate centroid, broader-than-carpet rolloff
+    if centroid_hz < _WOOD_MAX_CENTROID and rolloff_hz < _WOOD_MAX_ROLLOFF:
+        return "wood"
+
+    return "concrete"

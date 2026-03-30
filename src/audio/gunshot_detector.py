@@ -33,6 +33,10 @@ from typing import List, Optional
 import numpy as np
 from scipy.signal import butter, sosfilt
 
+# High-frequency band for ILD (same rationale as direction_estimator.py)
+_ILD_LOW_HZ  = 1000
+_ILD_HIGH_HZ = 8000
+
 SAMPLE_RATE = 48000
 
 # Gunshot detection
@@ -69,8 +73,10 @@ class GunEvent:
 
 class GunDetector:
     def __init__(self) -> None:
-        self._sos = butter(4, [_GUN_LOW_HZ, _GUN_HIGH_HZ],
-                           btype="band", fs=SAMPLE_RATE, output="sos")
+        self._sos     = butter(4, [_GUN_LOW_HZ, _GUN_HIGH_HZ],
+                               btype="band", fs=SAMPLE_RATE, output="sos")
+        self._ild_sos = butter(4, [_ILD_LOW_HZ, _ILD_HIGH_HZ],
+                               btype="band", fs=SAMPLE_RATE, output="sos")
         self._bg_rms_sq   = 0.0
         self._bg_count    = 0
         self._last_onset  = -_MIN_GAP_N
@@ -98,7 +104,12 @@ class GunDetector:
             window = filtered[pos: pos + _RISE_N]
             peak = float(np.max(np.abs(window)))
 
-            # Update background RMS (long-term, slow)
+            # Update background RMS (long-term, slow).
+            # 0.002 weight per 2 ms hop = ~0.2% update per hop, so the background
+            # estimate has a time constant of ~1 s (500 hops to reach 63% of a step).
+            # This keeps the baseline stable across normal game audio variation while
+            # still adapting over time - a sudden loud environment won't instantly
+            # inflate the reference and blind the detector.
             rms_sq = float(np.mean(window ** 2))
             self._bg_rms_sq = (self._bg_rms_sq * 0.998 + rms_sq * 0.002)
             bg_rms = float(np.sqrt(self._bg_rms_sq + 1e-10))
@@ -115,7 +126,14 @@ class GunDetector:
 
                 az = self._azimuth(l_win, r_win)
 
-                # DRR distance hint
+                # DRR (Direct-to-Reverberant Ratio) distance hint.
+                # The first 15 ms after onset is acoustically "direct sound" - the
+                # initial crack that arrives before room reflections build up.
+                # Close shots have high direct energy relative to reverb; distant shots
+                # have traveled farther so room energy has had more time to accumulate.
+                # 15 ms was chosen because Valorant map dimensions keep early reflections
+                # from reaching the listener in under ~5 ms (small rooms) to ~15 ms
+                # (large open sites), so splitting at 15 ms separates direct from diffuse.
                 direct_e = float(np.mean(analysis[:_DIRECT_N] ** 2))
                 reverb_e = float(np.mean(analysis[_DIRECT_N:] ** 2))
                 drr = direct_e / (reverb_e + 1e-12)
@@ -159,18 +177,27 @@ class GunDetector:
         l = left[:n]
         r = right[:n]
 
-        # ITD via cross-correlation
+        # GCC-PHAT ITD: whitens the cross-spectrum so the sharp 500Hz-8kHz
+        # gunshot crack dominates the correlation equally across frequencies.
+        # The +1e-10 epsilon prevents division by zero at silent frequency bins
+        # while being small enough not to affect bins with real signal energy.
         L = np.fft.rfft(l, n=2 * n)
         R = np.fft.rfft(r, n=2 * n)
-        xcorr = np.fft.irfft(L * np.conj(R))
-        lags = np.concatenate([np.arange(0, _MAX_LAG + 1), np.arange(-_MAX_LAG, 0)])
+        cross = L * np.conj(R)
+        cross_phat = cross / (np.abs(cross) + 1e-10)
+        xcorr = np.fft.irfft(cross_phat)
+        lags   = np.concatenate([np.arange(0, _MAX_LAG + 1), np.arange(-_MAX_LAG, 0)])
         search = np.concatenate([xcorr[:_MAX_LAG + 1], xcorr[-_MAX_LAG:]])
         lag = int(lags[np.argmax(search)])
         az_itd = float(lag) / _MAX_LAG * 90.0
 
-        # ILD
-        l_rms = float(np.sqrt(np.mean(l ** 2)) + 1e-9)
-        r_rms = float(np.sqrt(np.mean(r ** 2)) + 1e-9)
+        # High-band ILD (1-8 kHz): below 1 kHz the head is acoustically transparent
+        # (wavelength >> head diameter) so left/right level differences are negligible.
+        # Gunshots have strong high-frequency content, making ILD reliable here.
+        l_bp  = sosfilt(self._ild_sos, l)
+        r_bp  = sosfilt(self._ild_sos, r)
+        l_rms = float(np.sqrt(np.mean(l_bp ** 2)) + 1e-9)
+        r_rms = float(np.sqrt(np.mean(r_bp ** 2)) + 1e-9)
         ild_db = 20 * np.log10(r_rms / l_rms)
         az_ild = float(np.clip(ild_db / 6.0, -1.0, 1.0)) * 90.0
 

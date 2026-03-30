@@ -26,6 +26,7 @@ SAMPLE_RATE = 48000   # Valorant outputs at 48 kHz; match to avoid resampling ar
 CHANNELS = 2
 CHUNK_FRAMES = 1024          # frames per loopback read
 RING_SECONDS = 2.0           # ring buffer length
+# +1 ensures we always have a full 2 s even when the latest chunk is partial
 _RING_CHUNKS = int(RING_SECONDS * SAMPLE_RATE / CHUNK_FRAMES) + 1
 
 
@@ -37,7 +38,13 @@ class AudioCapture:
         On macOS set to 'BlackHole' or 'Loopback'.
         """
         self._device_name = device_name
+        # deque(maxlen=N) is the ring buffer: appending beyond capacity silently drops
+        # the oldest chunk, so the deque always holds at most 2 s of audio without
+        # any manual eviction logic.
         self._ring: deque = deque(maxlen=_RING_CHUNKS)
+        # Lock guards only the ring deque - capture thread appends, analysis thread reads.
+        # PyAudio/soundcard callbacks run on a dedicated C-level thread, so even a plain
+        # deque append is not thread-safe without this lock.
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
         self._running = False
@@ -70,6 +77,9 @@ class AudioCapture:
         flat = np.concatenate(chunks, axis=0)   # (total_frames, 2)
         if flat.shape[0] < n_samples:
             return None
+        # Slicing the tail of a concatenated buffer always gives the most recent
+        # n_samples regardless of where the ring write pointer sits - this is why
+        # we concatenate first rather than reading chunks in circular order.
         recent = flat[-n_samples:]               # (n_samples, 2)
         return recent.T.astype(np.float32)       # (2, n_samples)
 
@@ -104,6 +114,10 @@ class AudioCapture:
             with mic.recorder(samplerate=SAMPLE_RATE, channels=CHANNELS) as rec:
                 while self._running:
                     try:
+                        # rec.record() blocks until CHUNK_FRAMES are available - this is
+                        # the soundcard equivalent of a PyAudio blocking read callback.
+                        # The call happens on this dedicated daemon thread so the main
+                        # thread and analysis loop are never blocked waiting for audio.
                         data = rec.record(numframes=CHUNK_FRAMES)   # (frames, channels)
                         if data.shape[1] < CHANNELS:
                             # Mono device — duplicate channel

@@ -22,6 +22,7 @@ import os
 import queue
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -48,6 +49,13 @@ _AGENT_CONF_THRESHOLD = 0.45
 # Window around onset to feed into direction / classifier (samples)
 _ANALYSIS_WINDOW = int(0.35 * SAMPLE_RATE)   # 350 ms
 
+# _analysis_loop reads _ANALYSIS_WINDOW * 2 = 700 ms from the ring buffer each tick.
+# Using 2x the single-event window ensures that even if an onset falls at the very
+# start of the chunk, there is still 350 ms of context before it for the direction
+# estimator and classifier. The loop sleeps only 20 ms between reads, so consecutive
+# 700 ms windows overlap heavily - this is intentional: overlapping reads act as a
+# sliding window so no onset can slip between two non-overlapping reads.
+
 # Scale: rough meters per normalized map unit (calibrate per map if needed)
 _M_PER_UNIT: dict[str, float] = {
     "ascent": 110.0, "bind": 100.0, "haven": 120.0, "split": 90.0,
@@ -55,6 +63,13 @@ _M_PER_UNIT: dict[str, float] = {
     "lotus": 112.0, "sunset": 100.0, "abyss": 105.0,
 }
 _DEFAULT_M_PER_UNIT = 105.0
+
+# Gunshot burst clustering
+_GUN_BURST_WINDOW_S   = 0.5    # shots within this wall-clock window = burst
+# 1.5 s suppression after a burst callout is announced: most Valorant full-auto
+# magazines empty in ~1-1.2 s, so 1.5 s prevents the coach from calling out
+# every individual round while still catching a second separate engagement.
+_GUN_BURST_SUPPRESS_S = 1.5    # suppress further callouts after burst announced
 
 
 @dataclass
@@ -116,6 +131,16 @@ class AudioCoach:
         self._map_name: str = "unknown"
         self._enemy_agents: Optional[EnemyAgentTracker] = None
 
+        # Footstep deduplication: suppress re-detections from overlapping 700ms windows
+        self._last_step_wall_t: float = 0.0
+        self._last_step_az: float = 999.0
+        # Inter-step cadence tracking for walking/running detection (audio thread only)
+        self._step_history: deque = deque(maxlen=6)
+        # Gunshot deduplication and burst clustering state (audio thread only)
+        self._last_gun_wall_t: float = 0.0
+        self._last_gun_az: float = 999.0
+        self._gun_burst: dict = {}   # sector -> (last_wall_t, count, suppress_until)
+
     @property
     def player_facing(self) -> float:
         with self._state_lock:
@@ -174,6 +199,12 @@ class AudioCoach:
         self._footstep_det.reset()
         self._gun_det.reset()
         self._noise_gate.reset()
+        self._last_step_wall_t = 0.0
+        self._last_step_az = 999.0
+        self._step_history.clear()
+        self._last_gun_wall_t = 0.0
+        self._last_gun_az = 999.0
+        self._gun_burst.clear()
 
     def on_spike_resolved(self) -> None:
         """Disarm spike audio detection (defused or detonated)."""
@@ -226,7 +257,16 @@ class AudioCoach:
             # Gunshot detection (before noise gate -- gunshots ARE the transients)
             gun_events: List[GunEvent] = self._gun_det.process(stereo)
             for ge in gun_events:
-                self._queue.put(ge)
+                now_m = time.monotonic()
+                # Dedup: suppress re-detection of same shot in overlapping 700ms window
+                if (now_m - self._last_gun_wall_t < 0.3
+                        and abs(ge.azimuth_deg - self._last_gun_az) < 30.0):
+                    continue
+                self._last_gun_wall_t = now_m
+                self._last_gun_az = ge.azimuth_deg
+                ge = self._cluster_gun_event(ge, now_m)
+                if ge is not None:
+                    self._queue.put(ge)
 
             # Noise gate: suppress gunshot/explosion transients before footstep detection
             gated_l = self._noise_gate.process(stereo[0])
@@ -245,8 +285,29 @@ class AudioCoach:
 
             for event in events:
                 finding = self._process_event(event, stereo)
-                if finding is not None:
-                    self._queue.put(finding)
+                if finding is None:
+                    continue
+                now_m = time.monotonic()
+                # Dedup: suppress re-detection of same onset in overlapping 700ms window
+                # Deduplication gate: the same footstep onset can re-appear in the next
+                # 700 ms read because windows overlap by ~680 ms. The 0.08 s / 25 deg
+                # thresholds are tight enough to catch the same event re-detected but
+                # loose enough to allow two distinct rapid steps from similar directions.
+                # 25 deg matches half the width of one directional bucket (_az_to_word),
+                # so a step on the sector boundary can shift slightly without being dropped.
+                if (now_m - self._last_step_wall_t < 0.08
+                        and abs(finding.azimuth_deg - self._last_step_az) < 25.0):
+                    continue
+                self._last_step_wall_t = now_m
+                self._last_step_az = finding.azimuth_deg
+                # Cadence: classify walking vs running from inter-step interval
+                self._step_history.append((now_m, finding.azimuth_deg))
+                cadence = self._detect_cadence(finding.azimuth_deg, now_m)
+                if cadence:
+                    finding.voice_text = finding.voice_text.replace(
+                        " footstep at ", f" {cadence} footstep at ", 1
+                    )
+                self._queue.put(finding)
 
             time.sleep(0.02)   # 20 ms tick
 
@@ -261,6 +322,15 @@ class AudioCoach:
 
         # -- Direction
         az, dist_m = self._direction_est.estimate(stereo, event.amplitude_db)
+        # Blend onset-frame stereo balance as a third directional cue.
+        # stereo_balance (-1..+1) maps directly to ±90° azimuth - same sign convention.
+        # Using the onset frame is more precise than the full 700ms window ILD.
+        # 18% weight for stereo_balance (vs 82% for ITD+ILD): balance is a simple
+        # broadband L/R ratio without the frequency selectivity of true ILD, so it is
+        # less accurate for off-axis angles. It adds useful independent signal at
+        # low amplitude where ITD correlation peaks are weaker, but should not dominate.
+        balance_az = event.stereo_balance * 90.0
+        az = float(np.clip(az * 0.82 + balance_az * 0.18, -180.0, 180.0))
         map_dir = audio_az_to_map_direction(az, player_facing)
 
         scale = _M_PER_UNIT.get(map_name.lower(), _DEFAULT_M_PER_UNIT)
@@ -331,6 +401,78 @@ class AudioCoach:
             audio_clip=mono_window,
             voice_text=voice,
         )
+
+
+    def _cluster_gun_event(
+        self, ge: GunEvent, now_m: float
+    ) -> Optional[GunEvent]:
+        """
+        Group rapid shots from the same direction into a single burst callout.
+
+        First shot in a sector: emitted normally.
+        Second shot within _GUN_BURST_WINDOW_S: voice changed to "burst of fire".
+        Further shots within _GUN_BURST_SUPPRESS_S after burst: suppressed (return None).
+        """
+        sector = _az_to_word(ge.azimuth_deg)
+        entry = self._gun_burst.get(sector)
+
+        if entry is None:
+            self._gun_burst[sector] = (now_m, 1, 0.0)
+            return ge
+
+        last_t, count, suppress_until = entry
+
+        if now_m < suppress_until:
+            return None  # still within post-burst suppression window
+
+        if now_m - last_t <= _GUN_BURST_WINDOW_S:
+            count += 1
+            if count >= 2:
+                gun_word = "suppressed burst" if ge.suppressed else "burst of fire"
+                ge = GunEvent(
+                    time_sec=ge.time_sec,
+                    azimuth_deg=ge.azimuth_deg,
+                    suppressed=ge.suppressed,
+                    amplitude_db=ge.amplitude_db,
+                    distance_hint=ge.distance_hint,
+                    voice=f"{gun_word} {sector}",
+                )
+                self._gun_burst[sector] = (now_m, count, now_m + _GUN_BURST_SUPPRESS_S)
+            else:
+                self._gun_burst[sector] = (now_m, count, 0.0)
+        else:
+            # Gap too large: start fresh burst window
+            self._gun_burst[sector] = (now_m, 1, 0.0)
+
+        return ge
+
+    def _detect_cadence(self, az: float, now_m: float) -> Optional[str]:
+        """
+        Returns 'running' | 'walking' | None based on inter-step interval.
+
+        Requires at least one prior step from the same direction (within 45°).
+        Running: steps 250-550 ms apart (Valorant running cadence).
+        Walking: steps 550-800 ms apart.
+        Outside these ranges: insufficient data or too irregular.
+        """
+        recent = [
+            (t, a) for t, a in self._step_history
+            if abs(a - az) < 45.0 and t < now_m - 0.01
+        ]
+        if not recent:
+            return None
+        prev_t = recent[-1][0]
+        interval = now_m - prev_t
+        # Valorant running cadence measured from community recordings: steps land
+        # roughly every 300-450 ms at full sprint, so 0.25-0.55 s covers the range
+        # with margin. Walking (slow-walk, not shift-walk) produces steps ~600-750 ms
+        # apart; 0.55-0.80 s captures this band. Intervals outside both ranges are
+        # too irregular to classify confidently (e.g. start of movement, directional change).
+        if 0.25 <= interval <= 0.55:
+            return "running"
+        if 0.55 < interval <= 0.80:
+            return "walking"
+        return None
 
 
 # ------------------------------------------------------------------

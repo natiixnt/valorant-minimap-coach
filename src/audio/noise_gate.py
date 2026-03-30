@@ -35,6 +35,11 @@ _LONG_N    = int(_LONG_MS    * SAMPLE_RATE / 1000)
 _RELEASE_N = int(_RELEASE_MS * SAMPLE_RATE / 1000)
 
 
+# Ordering note: GunDetector must run on RAW audio BEFORE this gate because
+# gunshots ARE the transients we want to suppress here. Running the gate first
+# would zero out the very events the gunshot detector needs to find.
+# Conversely, FootstepDetector runs AFTER the gate so that explosion/gunshot
+# transients cannot generate spurious footstep onsets.
 class NoiseGate:
     def __init__(self) -> None:
         self._short_sq_sum = 0.0
@@ -54,13 +59,16 @@ class NoiseGate:
         for i in range(len(mono)):
             s = mono[i]
 
+            # Running squared-sum buffers: subtract the leaving sample, add the new one.
+            # This avoids recomputing the whole window sum on every sample (O(1) vs O(N)).
             # Update short-term RMS buffer
             old_s = self._short_buf[self._short_idx]
             self._short_sq_sum += s * s - old_s * old_s
             self._short_buf[self._short_idx] = s
             self._short_idx = (self._short_idx + 1) % _SHORT_N
 
-            # Update long-term RMS buffer
+            # Update long-term RMS buffer (200 ms) - this tracks the ambient background,
+            # not instantaneous amplitude, so gunshots don't distort the reference level.
             old_l = self._long_buf[self._long_idx]
             self._long_sq_sum += s * s - old_l * old_l
             self._long_buf[self._long_idx] = s
@@ -69,10 +77,14 @@ class NoiseGate:
             short_rms = float(np.sqrt(max(0.0, self._short_sq_sum / _SHORT_N)))
             long_rms  = float(np.sqrt(max(0.0, self._long_sq_sum  / _LONG_N)))
 
+            # Attack: re-arm the release counter every time a new transient peak is
+            # detected - this extends the gate if reverb keeps the signal elevated.
             if short_rms > long_rms * _GATE_RATIO and long_rms > 1e-7:
                 # Transient detected -- open gate for release period
                 self._release_left = _RELEASE_N
 
+            # Release: count down sample by sample; gate stays open for _RELEASE_N
+            # samples after the last transient peak to swallow the reverb tail.
             if self._release_left > 0:
                 out[i] = 0.0
                 self._release_left -= 1
