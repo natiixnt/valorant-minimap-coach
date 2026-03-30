@@ -159,8 +159,15 @@ class LocalAnalyzer:
             generated = out_ids[0][inputs["input_ids"].shape[1]:]
             callout   = self._processor.tokenizer.decode(generated, skip_special_tokens=True).strip()
 
+            if not callout:
+                return None
+            # Reject responses that are clearly not tactical callouts
+            if len(callout.split()) > 15:
+                print(f"[LocalAnalyzer] Response too long ({len(callout.split())} words), discarding")
+                return None
+
             self._last_sample_ts = int(now)
-            return callout or None
+            return callout
         except Exception as e:
             print(f"[LocalAnalyzer] Inference error: {e}")
             return None
