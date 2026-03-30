@@ -98,6 +98,33 @@ def main() -> None:
     if saved_map:
         coach.set_map_override(saved_map)
 
+    # Auto-calibrate minimap region in background if not already saved.
+    # Retries every 5 s for up to 2 minutes so it works once Valorant is in-match.
+    if not _saved.get("minimap_region"):
+        def _auto_calibrate():
+            import time, mss
+            import numpy as np
+            from src.ui.overlay import _detect_minimap_circle, save_settings
+            deadline = time.time() + 120
+            while time.time() < deadline:
+                try:
+                    with mss.mss() as sct:
+                        raw = sct.grab(sct.monitors[0])
+                    img = np.array(raw)[:, :, :3]
+                    region = _detect_minimap_circle(img)
+                    if region:
+                        save_settings({"minimap_region": region})
+                        coach.capture.set_region(region)
+                        if coach.map_detector:
+                            coach.map_detector.set_minimap_region(region)
+                        print(f"[AutoCal] Minimap region found: {region}")
+                        return
+                except Exception as e:
+                    print(f"[AutoCal] {e}")
+                time.sleep(5)
+            print("[AutoCal] Could not auto-detect minimap. Use Settings > MINIMAP REGION.")
+        threading.Thread(target=_auto_calibrate, daemon=True, name="AutoCalibrate").start()
+
     thread = threading.Thread(target=coach.run, daemon=True, name="CoachLoop")
     thread.start()
 

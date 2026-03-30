@@ -8,7 +8,9 @@ Lifecycle:
 """
 import base64
 import sys
+import threading
 import time
+import urllib.request
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Tuple
 
@@ -28,9 +30,78 @@ KNOWN_MAPS = {
 # Frozen exe: save templates next to the exe (persists across runs).
 # Dev: save in repo root / data / map_templates.
 if getattr(sys, "frozen", False):
-    _TEMPLATES_DIR = Path(sys.executable).parent / "data" / "map_templates"
+    _BASE_DIR      = Path(sys.executable).parent
 else:
-    _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "map_templates"
+    _BASE_DIR      = Path(__file__).resolve().parent.parent.parent
+
+_TEMPLATES_DIR     = _BASE_DIR / "data" / "map_templates"
+_RADAR_DIR         = _BASE_DIR / "data" / "map_radar"
+_RADAR_THRESHOLD   = 0.60   # lower than full-screen; comparing minimap vs reference icon
+
+# Official flat overhead displayIcon from valorant-api.com (public, no auth needed)
+_RADAR_URLS: dict[str, str] = {
+    "ascent":   "https://media.valorant-api.com/maps/7eaecc1b-4337-bbf6-6ab9-04b8f06b3319/displayicon.png",
+    "split":    "https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/displayicon.png",
+    "fracture": "https://media.valorant-api.com/maps/b529448b-4d60-346e-e89e-00a4c527a405/displayicon.png",
+    "bind":     "https://media.valorant-api.com/maps/2c9d57ec-4431-9c5e-2939-8f9ef6dd5cba/displayicon.png",
+    "breeze":   "https://media.valorant-api.com/maps/2fb9a4fd-47b8-4e7d-a969-74b4046ebd53/displayicon.png",
+    "abyss":    "https://media.valorant-api.com/maps/224b0a95-48b9-f703-1bd8-67aca101a61f/displayicon.png",
+    "lotus":    "https://media.valorant-api.com/maps/2fe4ed3a-450a-948b-6d6b-e89a78e680a9/displayicon.png",
+    "sunset":   "https://media.valorant-api.com/maps/92584fbe-486a-b1b2-9faa-39b0f486b498/displayicon.png",
+    "pearl":    "https://media.valorant-api.com/maps/fd267378-4d1d-484f-ff52-77821ed10dc2/displayicon.png",
+    "icebox":   "https://media.valorant-api.com/maps/e2ad5c54-4114-a870-9641-8ea21279579a/displayicon.png",
+    "haven":    "https://media.valorant-api.com/maps/2bee0dc9-4ffe-519b-1cbd-7fbe763a6047/displayicon.png",
+}
+
+
+# ---------------------------------------------------------------------------
+# Radar reference store (downloaded from valorant-api.com, cached locally)
+# ---------------------------------------------------------------------------
+
+class _RadarStore:
+    """Downloads official map overhead icons and fingerprints them for matching."""
+
+    def __init__(self) -> None:
+        _RADAR_DIR.mkdir(parents=True, exist_ok=True)
+        self._fps: dict[str, np.ndarray] = {}
+        threading.Thread(target=self._load_all, daemon=True, name="RadarStore").start()
+
+    def _load_all(self) -> None:
+        loaded = 0
+        for map_name, url in _RADAR_URLS.items():
+            path = _RADAR_DIR / f"{map_name}.png"
+            if not path.exists():
+                try:
+                    tmp = path.with_suffix(".tmp")
+                    urllib.request.urlretrieve(url, tmp)
+                    tmp.rename(path)
+                except Exception as e:
+                    print(f"[RadarStore] Download failed for {map_name}: {e}")
+                    continue
+            img = cv2.imread(str(path))
+            if img is not None:
+                self._fps[map_name] = _fingerprint(img)
+                loaded += 1
+        if loaded:
+            print(f"[RadarStore] Ready: {loaded}/{len(_RADAR_URLS)} map references loaded")
+
+    def match(self, minimap_bgr: np.ndarray) -> Tuple[Optional[str], float]:
+        if not self._fps:
+            return None, 0.0
+        fp = _fingerprint(minimap_bgr)
+        best_map, best_score, second_score = None, 0.0, 0.0
+        for name, ref in self._fps.items():
+            s = _score(fp, ref)
+            if s > best_score:
+                second_score = best_score
+                best_score = s
+                best_map = name
+            elif s > second_score:
+                second_score = s
+        # Require clear margin over second-best to avoid false positives
+        if best_score >= _RADAR_THRESHOLD and (best_score - second_score) >= 0.04:
+            return best_map, best_score
+        return None, best_score
 _THUMB_W, _THUMB_H = 320, 180
 _MATCH_THRESHOLD = 0.82   # histogram correlation; 1.0 = perfect match
 _MAX_TEMPLATES    = 5     # stored screenshots per map
@@ -119,23 +190,37 @@ class _TemplateStore:
 
 class MapDetector:
     def __init__(self, config: dict, collector: "Optional[DataCollector]" = None) -> None:
-        self._store     = _TemplateStore()
-        map_cfg         = config.get("map_detection", {})
-        self._model     = map_cfg.get("model", "claude-haiku-4-5-20251001")
+        self._store       = _TemplateStore()
+        self._radar_store = _RadarStore()   # async download starts immediately
+        map_cfg           = config.get("map_detection", {})
+        self._model       = map_cfg.get("model", "claude-haiku-4-5-20251001")
         self.recheck_interval = map_cfg.get("recheck_interval", 300.0)
         self.startup_retry    = map_cfg.get("startup_retry_interval", 10.0)
-        self._client: Optional[anthropic.Anthropic] = None  # lazy-init, only if needed
-        self._collector = collector
+        self._client: Optional[anthropic.Anthropic] = None
+        self._collector   = collector
         self._detected: Optional[str] = None
         self._last_check: float = 0.0
-        self._sct = mss.mss()   # reuse single instance; avoids 5-10ms per-call overhead
+        self._sct         = mss.mss()
+
+        # Minimap region for radar matching -- loaded from config; updated by auto-calibration
+        self._minimap_region: Optional[dict] = config.get("minimap", {}).get("region")
+        try:
+            from src.ui.overlay import load_settings as _ls
+            saved = _ls().get("minimap_region")
+            if saved:
+                self._minimap_region = saved
+        except Exception:
+            pass
 
         missing = KNOWN_MAPS - self._store.learned_maps()
         if not missing:
-            print("[MapDetector] All maps learned. Claude will not be used for map detection.")
+            print("[MapDetector] All maps learned locally.")
         else:
-            print(f"[MapDetector] Missing templates for: {', '.join(sorted(missing))} "
-                  f"(will use Claude on first encounter, then learn locally)")
+            print(f"[MapDetector] Missing local templates for: {', '.join(sorted(missing))} "
+                  f"-- will use radar matching (no API key needed)")
+
+    def set_minimap_region(self, region: dict) -> None:
+        self._minimap_region = region
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -143,6 +228,15 @@ class MapDetector:
 
     def close(self) -> None:
         self._sct.close()
+
+    def _grab_minimap(self) -> Optional[np.ndarray]:
+        if not self._minimap_region:
+            return None
+        try:
+            raw = self._sct.grab(self._minimap_region)
+            return np.array(raw)[:, :, :3]
+        except Exception:
+            return None
 
     def _grab(self) -> np.ndarray:
         # monitors[0] is the virtual desktop spanning all displays; works on any
@@ -193,17 +287,26 @@ class MapDetector:
     def detect_now(self) -> Optional[str]:
         img = self._grab()
 
+        # 1. Fast local template matching (trained from previous sessions; ~1ms)
         map_name, confidence = self._store.match(img)
         if map_name and confidence >= _MATCH_THRESHOLD:
             print(f"[MapDetector] Local match: {map_name} (conf={confidence:.2f})")
             return map_name
 
-        # Confidence too low or no templates yet - ask Claude
+        # 2. Radar matching against official map overhead icons -- no API key needed
+        minimap_img = self._grab_minimap()
+        if minimap_img is not None:
+            result, conf = self._radar_store.match(minimap_img)
+            if result:
+                print(f"[MapDetector] Radar match: {result} (conf={conf:.2f})")
+                self._store.save(result, img)   # persist so next session uses local match
+                return result
+
+        # 3. Claude API fallback (first-time, API key required)
         print(f"[MapDetector] Low confidence ({confidence:.2f}), querying Claude...")
         result = self._claude_identify(img)
         if result:
             self._store.save(result, img)
-            # Hard case: local matching failed, Claude had to step in - valuable training sample
             if self._collector:
                 self._collector.submit(img, result, "map_detection", confidence)
         return result

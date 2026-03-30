@@ -137,8 +137,14 @@ class Coach:
         overlay.on_volume_change         = self.tts.set_volume
         overlay.on_feedback              = self.collector.submit_feedback
         overlay.on_minimap_region_change = self.capture.set_region
-        overlay._collector               = self.collector   # for Settings HF status panel
+        overlay._collector               = self.collector
         overlay.on_map_override_change   = self.set_map_override
+        overlay.on_minimap_region_change = self._on_minimap_region_change
+
+    def _on_minimap_region_change(self, region: dict) -> None:
+        self.capture.set_region(region)
+        if self.map_detector:
+            self.map_detector.set_minimap_region(region)
 
     def set_map_override(self, map_name: Optional[str]) -> None:
         self._map_override = map_name or None
