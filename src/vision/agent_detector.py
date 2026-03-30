@@ -150,10 +150,19 @@ class AgentDetector:
                 raw = resp.content[0].text.strip().lower()
                 if raw == "unknown":
                     return []
-                agents = [a.strip() for a in raw.split(",")]
-                valid = [a for a in agents if a in ALL_AGENTS]
-                if len(valid) >= 3:   # accept partial if at least 3 recognised
-                    return valid[:5]
+                # Deduplicate while preserving order (Claude occasionally repeats an agent)
+                seen: set = set()
+                valid = []
+                for a in (a.strip() for a in raw.split(",")):
+                    if a in ALL_AGENTS and a not in seen:
+                        valid.append(a)
+                        seen.add(a)
+                if len(valid) < 3:
+                    print(f"[AgentDetector] Only {len(valid)} recognisable agents in response, retrying")
+                    continue
+                if len(valid) < 5:
+                    print(f"[AgentDetector] Partial composition ({len(valid)}/5): {valid}")
+                return valid[:5]
             except Exception as e:
                 if attempt == 0:
                     print(f"[AgentDetector] Claude error (retrying): {e}")
