@@ -1860,7 +1860,10 @@ class OverlayWindow(ctk.CTk):
         c = self._c
         self._callout_text_visible = not self._callout_text_visible
         if self._callout_text_visible:
-            self._callout_outer.pack(fill="x", pady=(2, 0), after=self._utility_outer)
+            if self._utility_outer.winfo_manager() == "pack":
+                self._callout_outer.pack(fill="x", pady=(2, 0), after=self._utility_outer)
+            else:
+                self._callout_outer.pack(fill="x", pady=(2, 0))
             self._callout_btn.configure(text="TEXT ON", fg_color=c["accent"],
                                         text_color=c["bg"])
         else:
@@ -1953,7 +1956,10 @@ class OverlayWindow(ctk.CTk):
         """
         c = self._c
         if not self._defuse_visible:
-            self._defuse_panel.pack(fill="x", before=self._ai_panel_ref)
+            if self._ai_panel_ref.winfo_manager() == "pack":
+                self._defuse_panel.pack(fill="x", before=self._ai_panel_ref)
+            else:
+                self._defuse_panel.pack(fill="x")
             self._defuse_visible = True
 
         if pct >= 1.0:
