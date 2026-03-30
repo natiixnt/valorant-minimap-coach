@@ -49,11 +49,16 @@ _REF_AMP_DB = -18.0   # dB RMS expected at ~5 m reference distance
 _REF_DIST_M = 5.0
 _MAX_DIST_M = 50.0    # running footsteps audible up to ~50 m per Riot
 
-# High-frequency band for ILD -- below ~1 kHz, sound diffracts around the head and
-# ILD approaches zero for all azimuths; only above 1 kHz does the head cast an
-# "acoustic shadow" that produces a meaningful level difference between the ears
-_ILD_LOW_HZ  = 1000
-_ILD_HIGH_HZ = 8000
+# Multi-band ILD: the acoustic head shadow grows with frequency, so different bands
+# contribute different amounts of directional information.
+# Below 1 kHz: head is too small relative to wavelength, ILD near zero for all angles.
+# 1-2 kHz: shadow starts emerging.  2-4 kHz: strongest, most consistent shadow.
+# 4-8 kHz: strong shadow but HRTF pinna notches can distort the raw level reading.
+_ILD_BANDS = [
+    (1000, 2000, 0.25),   # emerging shadow, moderate reliability
+    (2000, 4000, 0.45),   # strongest shadow, most consistent cue - highest weight
+    (4000, 8000, 0.30),   # strong shadow, but HRTF colorization reduces reliability
+]
 
 # Front-back disambiguation via HRTF spectral notch cues.
 # Valorant's THX Spatial Audio HRTF encodes elevation/front-back as spectral coloration:
@@ -71,9 +76,11 @@ class DirectionEstimator:
     """Per-event direction estimator. Filter coefficients precomputed in __init__."""
 
     def __init__(self) -> None:
-        # Bandpass for high-frequency ILD (computed once, applied stateless per call)
-        self._ild_sos  = butter(4, [_ILD_LOW_HZ, _ILD_HIGH_HZ],
-                                btype="band", fs=SAMPLE_RATE, output="sos")
+        # One filter per ILD band (computed once, applied stateless per call)
+        self._ild_sos_bands = [
+            butter(4, [lo, hi], btype="band", fs=SAMPLE_RATE, output="sos")
+            for lo, hi, _ in _ILD_BANDS
+        ]
         # Bandpass filters for HRTF front-back notch detection
         self._hrtf_sos = butter(4, [_HRTF_NOTCH_LOW_HZ, _HRTF_NOTCH_HIGH_HZ],
                                 btype="band", fs=SAMPLE_RATE, output="sos")
@@ -94,11 +101,16 @@ class DirectionEstimator:
         left = stereo[0]
         right = stereo[1]
 
-        az_itd = self._itd_azimuth(left, right)
+        az_itd, itd_conf = self._itd_azimuth(left, right)
         az_ild = self._ild_azimuth(left, right)
 
-        # Weighted combination
-        azimuth = _ITD_WEIGHT * az_itd + _ILD_WEIGHT * az_ild
+        # Confidence-weighted fusion: when the GCC-PHAT peak is sharp and unambiguous,
+        # lean on ITD (weight up to 0.6); when the peak is flat or noisy (reverb, poor
+        # stereo separation), fall back to ILD which is more robust in those conditions.
+        # The two weights always sum to 1.0, so the result stays in [-180, +180].
+        itd_w = _ITD_WEIGHT * itd_conf
+        ild_w = 1.0 - itd_w
+        azimuth = itd_w * az_itd + ild_w * az_ild
         azimuth = max(-180.0, min(180.0, azimuth))
 
         # Disambiguate front vs back using HRTF spectral notch cues
@@ -108,19 +120,23 @@ class DirectionEstimator:
         return azimuth, distance
 
     # ------------------------------------------------------------------
-    def _itd_azimuth(self, left: np.ndarray, right: np.ndarray) -> float:
-        """GCC-PHAT interaural time delay -> azimuth degrees.
+    def _itd_azimuth(self, left: np.ndarray, right: np.ndarray) -> tuple[float, float]:
+        """Frequency-weighted GCC-PHAT -> (azimuth_deg, confidence).
 
-        GCC-PHAT (Generalized Cross-Correlation with Phase Transform) divides the
-        cross-spectrum by its magnitude before computing the IFFT. This whitens the
-        spectrum so no single frequency dominates the correlation peak -- critical for
-        game audio where the loud 200 Hz footstep thud would otherwise drown out the
-        timing information in the 1-4 kHz transient band.
-        Result: a much sharper, more reliable peak even in noisy conditions.
+        Two improvements over plain GCC-PHAT:
+        1. Frequency weighting: after whitening, upweight the 1-4 kHz band where
+           footstep transients carry the most reliable timing information. This is a
+           hybrid between pure whitening (all freqs equal) and a band-limited correlator.
+        2. Sub-sample parabolic interpolation: the integer-sample lag gives ~2.9 deg
+           resolution per sample. Fitting a parabola through the peak and its two
+           neighbors finds the fractional lag, improving to ~0.5-1 deg effective precision.
+
+        Also returns a confidence score (0-1) based on the peak-to-noise ratio of the
+        correlation output, used by estimate() to weight ITD vs ILD adaptively.
         """
         n = min(len(left), len(right))
         if n < _MAX_LAG * 2:
-            return 0.0
+            return 0.0, 0.0
 
         l = left[:n] - left[:n].mean()
         r = right[:n] - right[:n].mean()
@@ -128,41 +144,57 @@ class DirectionEstimator:
         L = np.fft.rfft(l, n=2 * n)
         R = np.fft.rfft(r, n=2 * n)
         cross = L * np.conj(R)
-        # Phase transform: normalize cross-spectrum to unit magnitude per frequency bin
-        # GCC-PHAT normalization: dividing each bin by its own magnitude (+ epsilon to
-        # avoid /0) forces every frequency to contribute equally to the correlation peak.
-        # Without this, the loud low-frequency thud (200-800 Hz) would dominate and
-        # smear the peak, making the lag estimate unreliable.
+        # Whiten the cross-spectrum (GCC-PHAT), then additionally upweight 1-4 kHz --
+        # the band where footstep impacts produce their sharpest timing cues.
         cross_phat = cross / (np.abs(cross) + 1e-10)
-        xcorr = np.fft.irfft(cross_phat)
+        freqs = np.fft.rfftfreq(2 * n, d=1.0 / SAMPLE_RATE)
+        freq_w = np.where((freqs >= 1000) & (freqs <= 4000), 2.0, 1.0)
+        xcorr = np.fft.irfft(cross_phat * freq_w)
 
         search = np.concatenate([xcorr[: _MAX_LAG + 1], xcorr[-_MAX_LAG:]])
         lags   = np.concatenate([np.arange(0, _MAX_LAG + 1), np.arange(-_MAX_LAG, 0)])
-        peak_lag = int(lags[np.argmax(search)])   # positive = right ear first
+        peak_idx = int(np.argmax(search))
+        lag_float = float(lags[peak_idx])
 
-        az = float(peak_lag) / _MAX_LAG * 90.0
-        return az
+        # Parabolic sub-sample interpolation: skip at the wrap boundary where lags
+        # jump discontinuously from +MAX_LAG to -MAX_LAG (neighbors are not adjacent).
+        at_wrap = (peak_idx == 0 or peak_idx >= len(search) - 1
+                   or peak_idx == _MAX_LAG or peak_idx == _MAX_LAG + 1)
+        if not at_wrap:
+            y1, y2, y3 = search[peak_idx - 1], search[peak_idx], search[peak_idx + 1]
+            denom = y1 - 2.0 * y2 + y3
+            if abs(denom) > 1e-10:
+                delta = float(np.clip(0.5 * (y1 - y3) / denom, -0.5, 0.5))
+                lag_float += delta
+
+        az = lag_float / _MAX_LAG * 90.0
+
+        # Confidence: how many times above the noise floor is the correlation peak.
+        # A clean, sharp peak (single source, good stereo separation) gives confidence
+        # near 1.0; a flat or noisy correlation (reverb, multiple sources) gives ~0.
+        noise_floor = float(np.mean(np.abs(search)))
+        confidence = float(np.clip(search[peak_idx] / (noise_floor * 4.0 + 1e-10), 0.0, 1.0))
+
+        return az, confidence
 
     def _ild_azimuth(self, left: np.ndarray, right: np.ndarray) -> float:
-        """High-band ILD (1-8 kHz) -> azimuth degrees.
+        """Multi-band ILD -> azimuth degrees.
 
-        The full-spectrum ILD is dominated by the low-frequency footstep thud (200-800 Hz)
-        where the head is too small relative to the wavelength to cast an acoustic shadow --
-        ILD at these frequencies is near zero regardless of direction. Restricting to
-        1-8 kHz captures the frequencies where the head actually creates a meaningful
-        level difference between the ears.
+        Computes the level difference separately in three frequency bands and combines
+        them with frequency-dependent weights. A single wide-band measurement is pulled
+        toward zero by the low frequencies where ILD carries no directional information;
+        splitting into bands lets each band contribute proportionally to its reliability.
         """
-        # sosfilt without zi (initial conditions) is intentional: each call is stateless.
-        # We process one short onset window per event; there is no continuous signal to
-        # preserve state across - starting from zero is correct and avoids stale filter
-        # memory from a previous (possibly very different) event leaking into this one.
-        l_bp = sosfilt(self._ild_sos, left)
-        r_bp = sosfilt(self._ild_sos, right)
-        l_rms = float(np.sqrt(np.mean(l_bp ** 2)) + 1e-9)
-        r_rms = float(np.sqrt(np.mean(r_bp ** 2)) + 1e-9)
-        ild_db = 20 * np.log10(r_rms / l_rms)
-        az = np.clip(ild_db / 6.0, -1.0, 1.0) * 90.0
-        return float(az)
+        az_total = 0.0
+        for (lo, hi, weight), sos in zip(_ILD_BANDS, self._ild_sos_bands):
+            l_bp = sosfilt(sos, left)
+            r_bp = sosfilt(sos, right)
+            l_rms = float(np.sqrt(np.mean(l_bp ** 2)) + 1e-9)
+            r_rms = float(np.sqrt(np.mean(r_bp ** 2)) + 1e-9)
+            ild_db = 20 * np.log10(r_rms / l_rms)
+            az_band = float(np.clip(ild_db / 6.0, -1.0, 1.0) * 90.0)
+            az_total += weight * az_band
+        return az_total
 
     def _front_back(self, left: np.ndarray, right: np.ndarray, az: float) -> float:
         """Disambiguate front vs rear using HRTF spectral notch cues.

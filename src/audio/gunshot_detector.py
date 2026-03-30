@@ -186,10 +186,20 @@ class GunDetector:
         cross = L * np.conj(R)
         cross_phat = cross / (np.abs(cross) + 1e-10)
         xcorr = np.fft.irfft(cross_phat)
-        lags   = np.concatenate([np.arange(0, _MAX_LAG + 1), np.arange(-_MAX_LAG, 0)])
-        search = np.concatenate([xcorr[:_MAX_LAG + 1], xcorr[-_MAX_LAG:]])
-        lag = int(lags[np.argmax(search)])
-        az_itd = float(lag) / _MAX_LAG * 90.0
+        lags     = np.concatenate([np.arange(0, _MAX_LAG + 1), np.arange(-_MAX_LAG, 0)])
+        search   = np.concatenate([xcorr[:_MAX_LAG + 1], xcorr[-_MAX_LAG:]])
+        peak_idx = int(np.argmax(search))
+        lag_float = float(lags[peak_idx])
+        # Sub-sample parabolic interpolation: same approach as direction_estimator,
+        # skipped at the wrap boundary where lags are non-contiguous.
+        at_wrap = (peak_idx == 0 or peak_idx >= len(search) - 1
+                   or peak_idx == _MAX_LAG or peak_idx == _MAX_LAG + 1)
+        if not at_wrap:
+            y1, y2, y3 = search[peak_idx - 1], search[peak_idx], search[peak_idx + 1]
+            denom = y1 - 2.0 * y2 + y3
+            if abs(denom) > 1e-10:
+                lag_float += float(np.clip(0.5 * (y1 - y3) / denom, -0.5, 0.5))
+        az_itd = lag_float / _MAX_LAG * 90.0
 
         # High-band ILD (1-8 kHz): below 1 kHz the head is acoustically transparent
         # (wavelength >> head diameter) so left/right level differences are negligible.
