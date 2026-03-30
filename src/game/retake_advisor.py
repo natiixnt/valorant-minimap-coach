@@ -87,6 +87,28 @@ _RETAKE_TIMES: Dict[str, Dict[Tuple[str, str], float]] = {
         ("Mid Courtyard", "A site"): 5.0,
         ("Mid Courtyard", "B site"): 6.0,
     },
+    "breeze": {
+        ("CT spawn", "A site"): 9.0,
+        ("CT spawn", "B site"): 10.0,
+        ("CT hall", "A site"): 7.0,
+        ("CT hall", "B site"): 8.0,
+        ("Nest", "A site"): 8.0,
+        ("Nest", "B site"): 7.0,
+        ("A lobby", "A site"): 5.0,
+        ("B lobby", "B site"): 5.0,
+    },
+    "fracture": {
+        ("CT spawn A", "A site"): 6.0,
+        ("CT spawn A", "B site"): 11.0,
+        ("CT spawn B", "B site"): 6.0,
+        ("CT spawn B", "A site"): 11.0,
+        ("Mid Top", "A site"): 6.0,
+        ("Mid Top", "B site"): 6.0,
+        ("A Hall", "A site"): 4.5,
+        ("B Tunnel", "B site"): 4.0,
+        ("A Lobby", "A site"): 5.5,
+        ("B Lobby", "B site"): 5.0,
+    },
 }
 _DEFAULT_RETAKE_TIME = 8.0
 _POST_PLANT_TIME = 45.0   # seconds from plant to explosion
