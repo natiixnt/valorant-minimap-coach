@@ -129,11 +129,7 @@ class TTSEngine:
             return
 
         if priority:
-            # Check cooldown (based on last actual speak time)
-            with self._spoken_lock:
-                now_wall = time.time()
-                if now_wall - self._last_spoken.get(text, 0) < self.cooldown:
-                    return
+            # Priority callouts bypass cooldown -- they flush the queue and speak now.
             # Drain queue first (also clears _pending_texts)
             self._drain_queue()
             # Add to pending, then enqueue

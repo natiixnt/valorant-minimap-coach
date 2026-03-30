@@ -238,6 +238,8 @@ class Coach:
             return
         if map_name in self.map_detector._store.learned_maps():
             return
+        if self._template_timer is not None:
+            self._template_timer.cancel()
         self._template_timer = threading.Timer(45.0, self._auto_save_template, args=[map_name])
         self._template_timer.start()
         print(f"[Coach] Will auto-save template for '{map_name}' in 45 s...")
@@ -398,9 +400,9 @@ class Coach:
             timeout = self.spike_detector.candidate_timeout_reached
             if audio_confirmed or timeout:
                 self._spike_armed = False  # disarm first to prevent double-trigger on exception
-                pos = self.spike_detector.candidate_pos or (0.5, 0.5)
-                zone = pos_to_zone(pos[0], pos[1], self.map_name)
-                spike_text = f"Spike planted at {zone}! Rotate!"
+                pos = self.spike_detector.candidate_pos
+                zone = pos_to_zone(pos[0], pos[1], self.map_name) if pos else None
+                spike_text = f"Spike planted at {zone}! Rotate!" if zone else "Spike planted! Rotate!"
                 self._speak(spike_text, priority=True)
                 self._ui(self._overlay.update_callout, spike_text)  # type: ignore[union-attr]
                 self._spike_plant_time = time.monotonic()
