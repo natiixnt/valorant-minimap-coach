@@ -397,6 +397,7 @@ class Coach:
             audio_confirmed = self.audio_coach.spike_timer.has_started
             timeout = self.spike_detector.candidate_timeout_reached
             if audio_confirmed or timeout:
+                self._spike_armed = False  # disarm first to prevent double-trigger on exception
                 pos = self.spike_detector.candidate_pos or (0.5, 0.5)
                 zone = pos_to_zone(pos[0], pos[1], self.map_name)
                 spike_text = f"Spike planted at {zone}! Rotate!"
@@ -410,7 +411,6 @@ class Coach:
                 self.audio_coach.on_spike_planted(self._spike_plant_time)
                 self.defuse_advisor.reset()
                 self.spike_detector.confirm_planted(pos)
-                self._spike_armed = False
 
         # -- Retake advisor (post-plant phase)
         if self.spike_detector.is_planted and self.spike_detector.planted_pos and team:
