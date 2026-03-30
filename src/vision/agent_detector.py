@@ -143,6 +143,8 @@ class AgentDetector:
                         ],
                     }],
                 )
+                if not resp.content:
+                    return []
                 raw = resp.content[0].text.strip().lower()
                 if raw == "unknown":
                     return []

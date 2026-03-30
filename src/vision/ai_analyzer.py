@@ -78,6 +78,8 @@ class AIAnalyzer:
                     ],
                 }],
             )
+            if not resp.content:
+                return None
             callout = resp.content[0].text.strip()
             self._last_sample_ts = int(now)
             return callout
