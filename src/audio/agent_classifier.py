@@ -354,7 +354,7 @@ def _loudest_window(audio: np.ndarray, window: int) -> np.ndarray:
     best_rms = -1.0
     best_start = 0
     step = window // 4
-    for start in range(0, len(audio) - window, step):
+    for start in range(0, len(audio) - window + 1, step):
         rms = float(np.sqrt(np.mean(audio[start: start + window] ** 2)))
         if rms > best_rms:
             best_rms = rms

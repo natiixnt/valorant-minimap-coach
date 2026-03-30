@@ -130,8 +130,10 @@ class EconomyTracker:
     def _build_voice(self, enemy_buy: str, our_rec: str, enemy_credits: int) -> str:
         eco_map = {"eco": "on eco", "force": "force buying", "full": "full buying"}
         rec_map = {"save": "save this round", "force": "force buy", "full": "full buy"}
+        # self._round is already incremented by on_round_end; subtract 1 to name the ended round
+        ended_round = max(1, self._round - 1)
         return (
-            f"Round {self._round}: enemies probably {eco_map[enemy_buy]} "
+            f"Round {ended_round}: enemies probably {eco_map[enemy_buy]} "
             f"(~{enemy_credits} creds). We should {rec_map[our_rec]}."
         )
 
