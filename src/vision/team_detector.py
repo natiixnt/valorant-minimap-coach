@@ -49,8 +49,8 @@ class TeamDetector:
                 continue
             nx = M["m10"] / M["m00"] / w
             ny = M["m01"] / M["m00"] / h
-            # Exclude the local player icon (center ±0.12)
-            if abs(nx - 0.5) < 0.12 and abs(ny - 0.5) < 0.12:
+            # Exclude the local player icon (circular radius 0.12 from center)
+            if (nx - 0.5) ** 2 + (ny - 0.5) ** 2 < 0.12 ** 2:
                 continue
             candidates.append((area, (nx, ny)))
 

@@ -185,7 +185,9 @@ class _TemplateStore:
 
         path = _TEMPLATES_DIR / f"{map_name}_{int(time.time())}.jpg"
         small = cv2.resize(img, (_THUMB_W, _THUMB_H))
-        cv2.imwrite(str(path), small, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if not cv2.imwrite(str(path), small, [cv2.IMWRITE_JPEG_QUALITY, 85]):
+            print(f"[MapDetector] Failed to write template: {path}")
+            return
         self._fps[map_name].append(_fingerprint(small))
         print(f"[MapDetector] Learned template: {path.name}")
 

@@ -141,15 +141,19 @@ class LocalAnalyzer:
                 print("[LocalAnalyzer] CUDA OOM -- falling back to CPU")
                 torch.cuda.empty_cache()
                 self._device = "cpu"
-                self._model = self._model.to("cpu")
-                inputs = {k: v.to("cpu") for k, v in inputs.items()}
-                with torch.no_grad():
-                    out_ids = self._model.generate(
-                        **inputs,
-                        max_new_tokens=30,
-                        do_sample=False,
-                        pad_token_id=self._processor.tokenizer.pad_token_id,
-                    )
+                try:
+                    self._model = self._model.to("cpu")
+                    inputs = {k: v.to("cpu") for k, v in inputs.items()}
+                    with torch.no_grad():
+                        out_ids = self._model.generate(
+                            **inputs,
+                            max_new_tokens=30,
+                            do_sample=False,
+                            pad_token_id=self._processor.tokenizer.pad_token_id,
+                        )
+                except Exception as cpu_err:
+                    print(f"[LocalAnalyzer] CPU fallback failed: {cpu_err}")
+                    return None
 
             # Decode only the generated tokens (strip the input)
             generated = out_ids[0][inputs["input_ids"].shape[1]:]

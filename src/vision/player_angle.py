@@ -60,7 +60,7 @@ class PlayerAngleDetector:
 
         # Try cyan-white range first, then pure white
         mask = cv2.inRange(hsv, _ICON_LOWER, _ICON_UPPER)
-        if mask.sum() < _MIN_AREA * 255:
+        if cv2.countNonZero(mask) < _MIN_AREA:
             mask = cv2.inRange(hsv, _WHITE_LOWER, _WHITE_UPPER)
 
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel)

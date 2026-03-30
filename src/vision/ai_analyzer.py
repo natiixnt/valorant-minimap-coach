@@ -51,7 +51,9 @@ class AIAnalyzer:
         self._last_api_call = now
         self._last_state    = state
 
-        _, buf  = cv2.imencode(".jpg", frame.data, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        ok, buf = cv2.imencode(".jpg", frame.data, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if not ok:
+            return None
         img_b64 = base64.b64encode(buf).decode()
 
         parts: List[str] = [f"Valorant minimap, map {map_name}, {enemy_count} enemies."]

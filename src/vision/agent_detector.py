@@ -113,7 +113,9 @@ class AgentDetector:
     def _claude_identify(self, img: np.ndarray) -> List[str]:
         if self._client is None:
             self._client = anthropic.Anthropic()
-        _, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        if not ok:
+            return []
         b64 = base64.b64encode(buf).decode()
 
         prompt = (
