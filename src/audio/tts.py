@@ -308,3 +308,5 @@ class TTSEngine:
         except queue.Full:
             pass
         self._thread.join(timeout=3)
+        if self._thread.is_alive():
+            print("[TTS] Worker thread did not stop within timeout")

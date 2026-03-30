@@ -207,8 +207,8 @@ class PlayDetector:
         """Average velocity per enemy index over history frames."""
         if len(self._history) < 2:
             return {}
-        prev_frame = list(self._history)[-2]
-        curr_frame = list(self._history)[-1]
+        prev_frame = self._history[-2]
+        curr_frame = self._history[-1]
         if not prev_frame or not curr_frame:
             return {}
         result: Dict[int, Tuple[float, float]] = {}
