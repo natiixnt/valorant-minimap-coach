@@ -193,16 +193,6 @@ def train(
         log.error(f"Only {len(samples)} samples, need at least {min_samples}. Collect more data first.")
         return
 
-    # Deduplicate by label to avoid memorization
-    seen_labels: set = set()
-    unique_samples   = []
-    for s in samples:
-        if s["label"] not in seen_labels:
-            unique_samples.append(s)
-            seen_labels.add(s["label"])
-    log.info(f"After label dedup: {len(unique_samples)} unique callouts from {len(samples)} samples")
-    samples = unique_samples
-
     # Load model + processor
     log.info(f"Loading {base_model}...")
     processor = AutoProcessor.from_pretrained(base_model)
