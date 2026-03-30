@@ -805,23 +805,28 @@ class SettingsWindow(ctk.CTkToplevel):
         self.update()
 
         def _do():
-            import time, mss
-            time.sleep(3)
-            with mss.mss() as sct:
-                raw = sct.grab(sct.monitors[0])
-            img = np.array(raw)[:, :, :3]
-            region = _detect_minimap_circle(img)
-            if region:
-                save_settings({"minimap_region": region})
-                if hasattr(self._master, "on_minimap_region_change") and self._master.on_minimap_region_change:
-                    self._master.on_minimap_region_change(region)
+            try:
+                import time, mss
+                time.sleep(3)
+                with mss.mss() as sct:
+                    raw = sct.grab(sct.monitors[0])
+                img = np.array(raw)[:, :, :3]
+                region = _detect_minimap_circle(img)
+                if region:
+                    save_settings({"minimap_region": region})
+                    if hasattr(self._master, "on_minimap_region_change") and self._master.on_minimap_region_change:
+                        self._master.on_minimap_region_change(region)
+                    self.after(0, lambda: self._cal_status.configure(
+                        text=f"  {region['width']}x{region['height']} @ ({region['left']},{region['top']})",
+                        text_color="#4caf50"))
+                else:
+                    self.after(0, lambda: self._cal_status.configure(
+                        text="  not found -- try MANUAL calibration",
+                        text_color="#f44336"))
+            except Exception as e:
+                err = str(e)[:50]
                 self.after(0, lambda: self._cal_status.configure(
-                    text=f"  {region['width']}x{region['height']} @ ({region['left']},{region['top']})",
-                    text_color="#4caf50"))
-            else:
-                self.after(0, lambda: self._cal_status.configure(
-                    text="  not found -- try MANUAL calibration",
-                    text_color="#f44336"))
+                    text=f"  error: {err}", text_color="#f44336"))
 
         _t.Thread(target=_do, daemon=True).start()
 
@@ -831,49 +836,54 @@ class SettingsWindow(ctk.CTkToplevel):
         self.update()
 
         def _do():
-            import time, mss, numpy as np, cv2
-            time.sleep(3)
+            try:
+                import time, mss, numpy as np, cv2
+                time.sleep(3)
 
-            # Grab full desktop
-            with mss.mss() as sct:
-                raw = sct.grab(sct.monitors[0])
-            img = np.array(raw)[:, :, :3]
+                # Grab full desktop
+                with mss.mss() as sct:
+                    raw = sct.grab(sct.monitors[0])
+                img = np.array(raw)[:, :, :3]
 
-            points = []
+                points = []
 
-            def _on_click(event, x, y, flags, param):
-                if event == cv2.EVENT_LBUTTONDOWN and len(points) < 2:
-                    points.append((x, y))
-                    cv2.circle(img, (x, y), 6, (0, 255, 0), -1)
-                    if len(points) == 2:
-                        cv2.rectangle(img, points[0], points[1], (0, 255, 0), 2)
-                    cv2.imshow(title, img)
+                def _on_click(event, x, y, flags, param):
+                    if event == cv2.EVENT_LBUTTONDOWN and len(points) < 2:
+                        points.append((x, y))
+                        cv2.circle(img, (x, y), 6, (0, 255, 0), -1)
+                        if len(points) == 2:
+                            cv2.rectangle(img, points[0], points[1], (0, 255, 0), 2)
+                        cv2.imshow(title, img)
 
-            title = "Click: top-left then bottom-right of minimap | any key when done"
-            cv2.imshow(title, img)
-            cv2.setMouseCallback(title, _on_click)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
+                title = "Click: top-left then bottom-right of minimap | any key when done"
+                cv2.imshow(title, img)
+                cv2.setMouseCallback(title, _on_click)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
 
-            if len(points) == 2:
-                x1, y1 = points[0]
-                x2, y2 = points[1]
-                region = {
-                    "top":    min(y1, y2),
-                    "left":   min(x1, x2),
-                    "width":  abs(x2 - x1),
-                    "height": abs(y2 - y1),
-                }
-                save_settings({"minimap_region": region})
-                # Notify coach via master callback if available
-                if hasattr(self._master, "on_minimap_region_change") and self._master.on_minimap_region_change:
-                    self._master.on_minimap_region_change(region)
+                if len(points) == 2:
+                    x1, y1 = points[0]
+                    x2, y2 = points[1]
+                    region = {
+                        "top":    min(y1, y2),
+                        "left":   min(x1, x2),
+                        "width":  abs(x2 - x1),
+                        "height": abs(y2 - y1),
+                    }
+                    save_settings({"minimap_region": region})
+                    # Notify coach via master callback if available
+                    if hasattr(self._master, "on_minimap_region_change") and self._master.on_minimap_region_change:
+                        self._master.on_minimap_region_change(region)
+                    self.after(0, lambda: self._cal_status.configure(
+                        text=f"  {region['width']}x{region['height']} @ ({region['left']},{region['top']})",
+                        text_color="#4caf50"))
+                else:
+                    self.after(0, lambda: self._cal_status.configure(
+                        text="  cancelled -- need 2 points", text_color="#f44336"))
+            except Exception as e:
+                err = str(e)[:50]
                 self.after(0, lambda: self._cal_status.configure(
-                    text=f"  {region['width']}x{region['height']} @ ({region['left']},{region['top']})",
-                    text_color="#4caf50"))
-            else:
-                self.after(0, lambda: self._cal_status.configure(
-                    text="  cancelled -- need 2 points", text_color="#f44336"))
+                    text=f"  error: {err}", text_color="#f44336"))
 
         _t.Thread(target=_do, daemon=True).start()
 
