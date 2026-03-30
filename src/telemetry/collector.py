@@ -78,6 +78,7 @@ class DataCollector:
         self._app_version = config.get("app_version", "unknown")
         self._queue: queue.Queue = queue.Queue(maxsize=self._QUEUE_SIZE)
         self._seen: dict[str, float] = {}
+        self._seen_lock = threading.Lock()
         self.last_upload_ok: Optional[bool] = None   # None=untried, True=ok, False=failed
 
         if self.enabled and self._hf_token:
@@ -215,14 +216,15 @@ class DataCollector:
         """Return True if an identical frame was submitted within _DEDUP_WINDOW."""
         now = time.time()
         h = _frame_hash(img)
-        if len(self._seen) > 200:
-            self._seen = {k: v for k, v in self._seen.items() if now - v < self._DEDUP_WINDOW}
-        elif h in self._seen and now - self._seen[h] >= self._DEDUP_WINDOW:
-            del self._seen[h]
-        if h in self._seen:
-            return True
-        self._seen[h] = now
-        return False
+        with self._seen_lock:
+            if len(self._seen) > 200:
+                self._seen = {k: v for k, v in self._seen.items() if now - v < self._DEDUP_WINDOW}
+            elif h in self._seen and now - self._seen[h] >= self._DEDUP_WINDOW:
+                del self._seen[h]
+            if h in self._seen:
+                return True
+            self._seen[h] = now
+            return False
 
     def _enqueue(self, item: dict) -> None:
         try:
