@@ -303,9 +303,10 @@ class DefuseSoundDetector:
         Returns wall-clock defuse fraction 0.0-1.0, or None if not detected.
         Caller (coach.py) hides the UI and calls reset() when round ends.
         """
-        if self.onset_t is None:
+        onset = self.onset_t   # snapshot once; reset() on another thread can set it to None
+        if onset is None:
             return None
-        return min(1.0, (time.monotonic() - self.onset_t) / _DEFUSE_TIME)
+        return min(1.0, (time.monotonic() - onset) / _DEFUSE_TIME)
 
 
 # Half-defuse time (verified Valorant mechanic):

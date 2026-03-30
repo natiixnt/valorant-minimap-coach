@@ -75,6 +75,7 @@ class RoundState:
         self._transition(State.BUY_PHASE)
         self._clear_ticks = 0
         self._finished = False
+        self._prev_enemy_count = 0
 
     # ------------------------------------------------------------------
     # Per-tick update
