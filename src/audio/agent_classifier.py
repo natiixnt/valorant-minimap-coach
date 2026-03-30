@@ -199,6 +199,8 @@ class AgentClassifier:
             audio = np.pad(audio, (0, clip_len - len(audio)))
 
         features = extract_features(audio).reshape(1, -1)
+        if not np.all(np.isfinite(features)):
+            return "unknown", 0.0, "unknown"
         proba = self._model.predict_proba(features)[0]
         best_idx = int(np.argmax(proba))
         shoe_type = self._label_map[best_idx] if best_idx < len(self._label_map) else "unknown"
