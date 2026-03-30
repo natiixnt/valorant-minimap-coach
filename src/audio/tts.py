@@ -258,48 +258,51 @@ class TTSEngine:
     def _worker(self) -> None:
         while self._running:
             try:
-                item = self._queue.get(timeout=0.5)
-            except queue.Empty:
-                continue
-            if item is _STOP:
-                break
+                try:
+                    item = self._queue.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                if item is _STOP:
+                    break
 
-            with self._depth_lock:
-                if item.priority_key == 1:
-                    self._queue_depth = max(0, self._queue_depth - 1)
+                with self._depth_lock:
+                    if item.priority_key == 1:
+                        self._queue_depth = max(0, self._queue_depth - 1)
 
-            # Always remove from pending set when dequeued (spoken or stale)
-            with self._spoken_lock:
-                self._pending_texts.discard(item.text)
-
-            # Drop stale items silently -- do NOT update _last_spoken.
-            # This allows the same callout to be re-queued immediately next tick
-            # if the situation is still relevant.
-            if isinstance(item, _Item) and item.is_stale():
-                continue
-
-            if not self._engine:
-                continue
-
-            with self._volume_lock:
-                vol = self._pending_volume
-                self._pending_volume = None
-            if vol is not None:
-                self._engine.setProperty("volume", vol)
-
-            with self._voice_lock:
-                voice = self._pending_voice
-                self._pending_voice = None
-            if voice:
-                self._engine.setProperty("voice", voice)
-            try:
-                self._engine.say(item.text)
-                self._engine.runAndWait()
-                # Cooldown runs from when item was actually SPOKEN, not queued
+                # Always remove from pending set when dequeued (spoken or stale)
                 with self._spoken_lock:
-                    self._last_spoken[item.text] = time.time()
+                    self._pending_texts.discard(item.text)
+
+                # Drop stale items silently -- do NOT update _last_spoken.
+                # This allows the same callout to be re-queued immediately next tick
+                # if the situation is still relevant.
+                if isinstance(item, _Item) and item.is_stale():
+                    continue
+
+                if not self._engine:
+                    continue
+
+                with self._volume_lock:
+                    vol = self._pending_volume
+                    self._pending_volume = None
+                if vol is not None:
+                    self._engine.setProperty("volume", vol)
+
+                with self._voice_lock:
+                    voice = self._pending_voice
+                    self._pending_voice = None
+                if voice:
+                    self._engine.setProperty("voice", voice)
+                try:
+                    self._engine.say(item.text)
+                    self._engine.runAndWait()
+                    # Cooldown runs from when item was actually SPOKEN, not queued
+                    with self._spoken_lock:
+                        self._last_spoken[item.text] = time.time()
+                except Exception as e:
+                    print(f"[TTS] Engine error: {e}")
             except Exception as e:
-                print(f"[TTS] Engine error: {e}")
+                print(f"[TTS] Worker error: {e}")
 
     def stop(self) -> None:
         self._running = False
