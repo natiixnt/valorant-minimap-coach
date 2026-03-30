@@ -139,8 +139,7 @@ class LocalAnalyzer:
                 if "out of memory" not in str(oom).lower():
                     raise
                 print("[LocalAnalyzer] CUDA OOM -- falling back to CPU")
-                import torch as _torch
-                _torch.cuda.empty_cache()
+                torch.cuda.empty_cache()
                 self._device = "cpu"
                 self._model = self._model.to("cpu")
                 inputs = {k: v.to("cpu") for k, v in inputs.items()}

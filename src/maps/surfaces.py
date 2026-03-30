@@ -161,6 +161,8 @@ def get_surface(x: float, y: float, map_name: str) -> str:
     Falls back to "concrete" if map is unknown.
     """
     zones: List[SurfaceZone] = _SURFACES.get(map_name.lower(), [])
+    if not zones:
+        print(f"[Surfaces] Unknown map '{map_name}', defaulting surface to concrete")
     for x_min, x_max, y_min, y_max, surface in zones:
         if x_min <= x < x_max and y_min <= y < y_max:
             return surface

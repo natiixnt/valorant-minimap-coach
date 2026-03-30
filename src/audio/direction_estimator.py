@@ -93,9 +93,8 @@ class DirectionEstimator:
         xcorr = np.fft.irfft(L * np.conj(R))
 
         # Search in ±MAX_LAG range
-        center = 0
-        search = np.concatenate([xcorr[center: center + _MAX_LAG + 1],
-                                  xcorr[-(  _MAX_LAG):]])
+        search = np.concatenate([xcorr[: _MAX_LAG + 1],
+                                  xcorr[-_MAX_LAG:]])
         # Build lag array: [0, 1, ..., MAX_LAG, -MAX_LAG, ..., -1]
         lags = np.concatenate([np.arange(0, _MAX_LAG + 1),
                                 np.arange(-_MAX_LAG, 0)])

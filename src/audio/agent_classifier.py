@@ -150,8 +150,8 @@ class AgentClassifier:
 
         clf = RandomForestClassifier(
             n_estimators=300,
-            max_depth=None,
-            min_samples_leaf=1,
+            max_depth=20,
+            min_samples_leaf=3,
             class_weight="balanced",
             random_state=42,
             n_jobs=-1,
@@ -215,7 +215,7 @@ class AgentClassifier:
                 return None
         if path.suffix == ".wav":
             try:
-                import wave, struct
+                import wave
                 with wave.open(str(path)) as wf:
                     n = wf.getnframes()
                     raw = wf.readframes(n)

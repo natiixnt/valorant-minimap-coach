@@ -125,8 +125,8 @@ def _cv_angle_to_compass(cv_angle: float, contour: np.ndarray, shape: Tuple[int,
 
     # Find the point in the contour farthest from the centroid (= tip of triangle)
     pts = contour[:, 0, :]
-    dists = np.sqrt((pts[:, 0] - cx) ** 2 + (pts[:, 1] - cy) ** 2)
-    tip = pts[np.argmax(dists)]
+    dists_sq = (pts[:, 0] - cx) ** 2 + (pts[:, 1] - cy) ** 2
+    tip = pts[np.argmax(dists_sq)]
 
     # Vector from centroid to tip
     dx = float(tip[0] - cx)

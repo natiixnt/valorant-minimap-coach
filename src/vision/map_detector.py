@@ -67,13 +67,19 @@ class _RadarStore:
         threading.Thread(target=self._load_all, daemon=True, name="RadarStore").start()
 
     def _load_all(self) -> None:
+        import socket
         loaded = 0
         for map_name, url in _RADAR_URLS.items():
             path = _RADAR_DIR / f"{map_name}.png"
             if not path.exists():
                 try:
                     tmp = path.with_suffix(".tmp")
-                    urllib.request.urlretrieve(url, tmp)
+                    old_timeout = socket.getdefaulttimeout()
+                    socket.setdefaulttimeout(10)
+                    try:
+                        urllib.request.urlretrieve(url, tmp)
+                    finally:
+                        socket.setdefaulttimeout(old_timeout)
                     tmp.rename(path)
                 except Exception as e:
                     print(f"[RadarStore] Download failed for {map_name}: {e}")
@@ -180,7 +186,7 @@ class _TemplateStore:
         path = _TEMPLATES_DIR / f"{map_name}_{int(time.time())}.jpg"
         small = cv2.resize(img, (_THUMB_W, _THUMB_H))
         cv2.imwrite(str(path), small, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        self._fps[map_name].append(_fingerprint(img))
+        self._fps[map_name].append(_fingerprint(small))
         print(f"[MapDetector] Learned template: {path.name}")
 
 
@@ -270,6 +276,8 @@ class MapDetector:
                         ],
                     }],
                 )
+                if not resp.content:
+                    return None
                 result = resp.content[0].text.strip().lower()
                 return result if result in KNOWN_MAPS else None
             except Exception as e:

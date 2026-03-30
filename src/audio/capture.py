@@ -6,7 +6,7 @@ Uses the `soundcard` library which supports:
   - macOS: BlackHole / Loopback virtual device
   - Linux: PulseAudio monitor source
 
-The ring buffer holds ~2 s of stereo audio at 44.1 kHz and is read from
+The ring buffer holds ~2 s of stereo audio at 48 kHz and is read from
 the analysis pipeline in a non-blocking fashion.
 
 Usage:

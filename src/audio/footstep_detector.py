@@ -63,6 +63,10 @@ class FootstepEvent:
     stereo_balance: float    # L-R energy ratio, -1.0 left … +1.0 right
 
 
+_HANNING_WINDOW = np.hanning(FRAME_SIZE)
+_FREQ_BINS      = np.fft.rfftfreq(FRAME_SIZE, d=1.0 / SAMPLE_RATE)
+
+
 class FootstepDetector:
     def __init__(self) -> None:
         self._sos = butter(4, [_BP_LOW_HZ, _BP_HIGH_HZ],
@@ -95,7 +99,7 @@ class FootstepDetector:
 
         while pos + FRAME_SIZE <= n:
             frame = mono_bp[pos: pos + FRAME_SIZE]
-            spectrum = np.abs(np.fft.rfft(frame * np.hanning(FRAME_SIZE)))
+            spectrum = np.abs(np.fft.rfft(frame * _HANNING_WINDOW))
 
             # Spectral flux (positive diff only)
             if self._prev_spectrum is not None and len(self._prev_spectrum) == len(spectrum):
@@ -124,7 +128,7 @@ class FootstepDetector:
 
                 # Classify surface from full-spectrum centroid
                 full_spec = np.abs(np.fft.rfft(mono[pos: pos + FRAME_SIZE]
-                                                * np.hanning(FRAME_SIZE)))
+                                                * _HANNING_WINDOW))
                 centroid_hz = _spectral_centroid(full_spec, SAMPLE_RATE)
                 surface = _classify_surface(centroid_hz)
 
@@ -156,11 +160,10 @@ class FootstepDetector:
 
 # ------------------------------------------------------------------
 def _spectral_centroid(spectrum: np.ndarray, sr: int) -> float:
-    freqs = np.fft.rfftfreq(2 * (len(spectrum) - 1), d=1.0 / sr)
     total = float(np.sum(spectrum))
     if total < 1e-12:
         return 0.0
-    return float(np.dot(freqs, spectrum) / total)
+    return float(np.dot(_FREQ_BINS, spectrum) / total)
 
 
 def _classify_surface(centroid_hz: float) -> str:
