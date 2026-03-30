@@ -183,8 +183,9 @@ class PlayDetector:
                       for vx, vy in velocities.values()]
             avg_speed = float(np.mean(speeds)) if speeds else 0.0
 
+            site_str = site if site else "site"
             if avg_speed >= _RUSH_SPEED_THRESHOLD:
-                voice = f"Rush! {len(main_cluster)} enemies pushing {site}! Fall back!"
+                voice = f"Rush! {len(main_cluster)} enemies pushing {site_str}! Fall back!"
                 return PlayEvent(
                     play=PlayType.RUSH,
                     voice=voice,
@@ -192,7 +193,7 @@ class PlayDetector:
                     zones=[site] if site else [],
                 )
             elif len(main_cluster) >= 4:
-                voice = f"Execute onto {site}! {len(main_cluster)} enemies moving in!"
+                voice = f"Execute onto {site_str}! {len(main_cluster)} enemies moving in!"
                 return PlayEvent(
                     play=PlayType.EXECUTE,
                     voice=voice,
@@ -240,13 +241,14 @@ def _cluster(
         return []
     remaining = list(points)
     clusters = []
+    r2 = _CLUSTER_RADIUS ** 2
     while remaining:
         seed = remaining.pop(0)
         cluster = [seed]
         new_remaining = []
         for p in remaining:
-            d = np.sqrt((p[0] - seed[0]) ** 2 + (p[1] - seed[1]) ** 2)
-            if d <= _CLUSTER_RADIUS:
+            d = (p[0] - seed[0]) ** 2 + (p[1] - seed[1]) ** 2
+            if d <= r2:
                 cluster.append(p)
             else:
                 new_remaining.append(p)

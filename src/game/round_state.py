@@ -167,6 +167,3 @@ class RoundState:
         self.round_num += 1
         if self.round_num == _HALF_AT_ROUND + 1:
             self.on_attack = not self.on_attack
-        elif self.round_num == _HALF_AT_ROUND * 2 + 1:
-            # Overtime alternates every 2 rounds
-            pass

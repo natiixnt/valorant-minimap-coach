@@ -90,6 +90,7 @@ _RETAKE_TIMES: Dict[str, Dict[Tuple[str, str], float]] = {
 }
 _DEFAULT_RETAKE_TIME = 8.0
 _POST_PLANT_TIME = 45.0   # seconds from plant to explosion
+_DEFUSE_TIME     = 7.0    # seconds needed to complete a defuse
 
 
 class RetakeAdvisor:
@@ -130,7 +131,7 @@ class RetakeAdvisor:
 
         closest_time, closest_zone = ranked[0]
 
-        if closest_time > time_left - 5:
+        if closest_time > time_left - _DEFUSE_TIME:
             return (
                 f"Spike at {spike_zone}! {int(time_left)}s left -- "
                 f"too far, consider abandoning retake."

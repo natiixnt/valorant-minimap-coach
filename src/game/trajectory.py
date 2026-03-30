@@ -24,12 +24,13 @@ import numpy as np
 
 from src.maps.callouts import pos_to_zone
 
-_HISTORY_FRAMES = 6     # frames of position history per slot
-_PREDICT_SEC    = 1.5   # how far ahead to predict (seconds)
-_FRAME_SEC      = 0.1   # seconds per frame (coach loop period)
-_PREDICT_FRAMES = int(_PREDICT_SEC / _FRAME_SEC)
-_MIN_SPEED      = 0.004  # min normalized units/frame to bother predicting
-_CONF_THRESHOLD = 0.35   # minimum confidence to announce prediction
+_HISTORY_FRAMES    = 6     # frames of position history per slot
+_PREDICT_SEC       = 1.5   # how far ahead to predict (seconds)
+_FRAME_SEC         = 0.1   # seconds per frame (coach loop period)
+_PREDICT_FRAMES    = int(_PREDICT_SEC / _FRAME_SEC)
+_MIN_SPEED         = 0.004  # min normalized units/frame to bother predicting
+_CONF_THRESHOLD    = 0.35   # minimum confidence to announce prediction
+_MATCH_DIST_SQ     = 0.15 ** 2  # squared match distance threshold (same as ZoneTracker)
 
 
 class TrajectoryPredictor:
@@ -62,7 +63,7 @@ class TrajectoryPredictor:
                 if d < best_d:
                     best_d = d
                     best_i = ei
-            if best_i >= 0 and best_d < 0.15 ** 2:
+            if best_i >= 0 and best_d < _MATCH_DIST_SQ:
                 matched[slot_id] = best_i
                 unmatched_e.remove(best_i)
 
@@ -77,7 +78,6 @@ class TrajectoryPredictor:
             sid = self._next_slot
             self._next_slot += 1
             self._histories[sid] = deque(maxlen=_HISTORY_FRAMES)
-            self._histories[sid].append(enemies[ei])
             matched[sid] = ei
 
         # Update histories
@@ -88,7 +88,7 @@ class TrajectoryPredictor:
         callouts: List[str] = []
         for sid, ei in matched.items():
             hist = list(self._histories[sid])
-            if len(hist) < 3:
+            if len(hist) < 4:
                 continue
             result = self._predict_one(hist, map_name)
             if result is None:

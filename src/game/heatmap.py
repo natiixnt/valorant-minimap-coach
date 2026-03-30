@@ -57,12 +57,14 @@ class Heatmap:
         self._current_round = next_round
         self._round_start_ts[next_round] = time.monotonic()
 
-        # Prune old rounds
+        # Prune old rounds and remove zones that become empty
         cutoff = next_round - _MAX_ROUNDS
         for zone in list(self._data):
             self._data[zone] = {
                 r: v for r, v in self._data[zone].items() if r > cutoff
             }
+            if not self._data[zone]:
+                del self._data[zone]
 
     def score(self, zone: str) -> float:
         """
@@ -76,7 +78,7 @@ class Heatmap:
         for r, v in rounds.items():
             age = max(0, self._current_round - r)   # 0 = this round; guard future rounds
             total += v * (_DECAY_PER_ROUND ** age)
-        return float(min(1.0, total))
+        return float(max(0.0, min(1.0, total)))
 
     def hottest_zones(self, n: int = 5) -> List[Tuple[str, float]]:
         """Return the n zones with highest danger score, descending."""

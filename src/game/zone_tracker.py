@@ -25,9 +25,10 @@ from typing import Dict, List, Optional, Tuple
 
 from src.maps.callouts import pos_to_zone
 
-_MAX_MATCH_DIST = 0.15   # normalized units; beyond this = new enemy, not moved
-_CONFIRM_FRAMES = 2      # frames enemy must be in new zone before announcing
-_SLOT_COOLDOWN  = 10.0   # seconds before same slot can announce again
+_MAX_MATCH_DIST    = 0.15   # normalized units; beyond this = new enemy, not moved
+_MAX_MATCH_DIST_SQ = _MAX_MATCH_DIST ** 2
+_CONFIRM_FRAMES    = 2      # frames enemy must be in new zone before announcing
+_SLOT_COOLDOWN     = 10.0   # seconds before same slot can announce again
 
 
 class ZoneTracker:
@@ -63,7 +64,7 @@ class ZoneTracker:
                 if d < best_d:
                     best_d = d
                     best_idx = ei
-            if best_idx >= 0 and best_d < _MAX_MATCH_DIST ** 2:
+            if best_idx >= 0 and best_d < _MAX_MATCH_DIST_SQ:
                 matched_slots[slot_id] = best_idx
                 unmatched_enemies.remove(best_idx)
                 unmatched_slots.remove(slot_id)
