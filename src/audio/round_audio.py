@@ -87,6 +87,8 @@ class RoundAudioDetector:
                         self.on_round_start()
             else:
                 self._horn_frames = 0
+        else:
+            self._horn_frames = 0
 
         # --- Round end (win)
         if now - self._last_end > _END_COOLDOWN and rms_db > _WIN_AMP_DB:

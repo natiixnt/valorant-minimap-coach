@@ -69,9 +69,10 @@ _IBI_EXP   = 1.39
 
 # ── IBI debounce ─────────────────────────────────────────────────────────────
 # Minimum IBI at max beep rate is 0.125 s (8 bps). Debounce at half that.
+_LONG_RMS_ALPHA = 0.01    # EMA coefficient for beep detector background level
 
 # ── Defuse advice milestones ─────────────────────────────────────────────────
-_ADVICE_THRESHOLDS = [20.0, 10.0, 7.0 + _DEFUSE_MARGIN]   # seconds remaining
+_ADVICE_THRESHOLDS = [20.0, 10.0, _DEFUSE_TIME + _DEFUSE_MARGIN]   # seconds remaining
 
 
 # ── Defuse start-sound characteristics ──────────────────────────────────────
@@ -86,7 +87,8 @@ _DEFUSE_HIGH_HZ  = 1500   # bandpass high edge (Hz)
 _DEFUSE_WIN_S    = 0.04   # analysis window 40 ms
 _DEFUSE_WIN      = int(_DEFUSE_WIN_S * SAMPLE_RATE)
 _DEFUSE_THRESH   = 5.0    # short RMS / long RMS ratio to fire onset
-_DEFUSE_COOLDOWN = 8.0    # s -- re-arm only after this much time (prevent re-trigger)
+_DEFUSE_COOLDOWN  = 8.0    # s -- re-arm only after this much time (prevent re-trigger)
+_DEFUSE_BG_ALPHA  = 0.005  # EMA coefficient for defuse detector background level
 
 # ── Butterworth bandpass (SOS) ───────────────────────────────────────────────
 def _make_bandpass(lo: int, hi: int):
@@ -139,8 +141,7 @@ class SpikeBeepDetector:
             short_rms = float(np.sqrt(np.mean(chunk ** 2)) + 1e-9)
 
             # Update long-term background (slow exponential)
-            alpha = 0.01
-            self._long_rms = (1 - alpha) * self._long_rms + alpha * short_rms
+            self._long_rms = (1 - _LONG_RMS_ALPHA) * self._long_rms + _LONG_RMS_ALPHA * short_rms
 
             ratio = short_rms / (self._long_rms + 1e-9)
             if ratio >= _BEEP_THRESH:
@@ -288,7 +289,7 @@ class DefuseSoundDetector:
             short_rms = float(np.sqrt(np.mean(chunk ** 2)) + 1e-9)
 
             # Update slow background
-            self._long_rms = 0.995 * self._long_rms + 0.005 * short_rms
+            self._long_rms = (1 - _DEFUSE_BG_ALPHA) * self._long_rms + _DEFUSE_BG_ALPHA * short_rms
 
             ratio = short_rms / (self._long_rms + 1e-9)
             if ratio >= _DEFUSE_THRESH:
@@ -309,7 +310,8 @@ class DefuseSoundDetector:
 
 # Half-defuse time (verified Valorant mechanic):
 # After 3.5 s of defuse, progress is saved. If interrupted, only 3.5 s more needed.
-_HALF_DEFUSE_TIME = _DEFUSE_TIME / 2.0   # 3.5 s
+_HALF_DEFUSE_TIME        = _DEFUSE_TIME / 2.0   # 3.5 s
+_ADVICE_SUPPRESS_MARGIN  = 2.0   # extra buffer above defuse window before suppressing cooldown
 
 
 class DefuseAdvisor:
@@ -396,7 +398,7 @@ class DefuseAdvisor:
         if callout is not None:
             if now - self._last_advice_t < self._advice_cooldown:
                 # Suppress unless it's a hard warning (critical threshold)
-                if remaining > _DEFUSE_TIME + _DEFUSE_MARGIN + 2.0:
+                if remaining > _DEFUSE_TIME + _DEFUSE_MARGIN + _ADVICE_SUPPRESS_MARGIN:
                     callout = None
             if callout is not None:
                 self._last_advice_t = now
