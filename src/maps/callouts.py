@@ -485,7 +485,7 @@ _GRID = [
 
 
 def pos_to_zone(x: float, y: float, map_name: str) -> str:
-    for zone in MAP_ZONES.get(map_name, []):
+    for zone in MAP_ZONES.get(map_name.lower(), []):
         if (zone.x_range[0] <= x < zone.x_range[1]
                 and zone.y_range[0] <= y < zone.y_range[1]):
             return zone.name
