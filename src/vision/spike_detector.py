@@ -21,6 +21,7 @@ The caller (coach.py) is responsible for the two-phase handshake:
   1. Check spike_detector.is_candidate → arm audio beep detector
   2. Check audio_coach.spike_timer.has_started → call spike_detector.confirm_planted()
 """
+import time
 from typing import Optional, Tuple
 
 import cv2
@@ -53,7 +54,6 @@ class SpikeDetector:
         Call once per coach loop tick to update internal state.
         Does NOT return position directly -- use is_candidate / is_planted / planted_pos.
         """
-        import time
         hsv = cv2.cvtColor(frame.data, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, _SPIKE_LOWER, _SPIKE_UPPER)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel)
@@ -61,12 +61,14 @@ class SpikeDetector:
 
         h, w = frame.data.shape[:2]
         best: Optional[Tuple[float, float]] = None
+        best_area = 0.0
         for cnt in contours:
-            if cv2.contourArea(cnt) >= _MIN_AREA:
+            area = cv2.contourArea(cnt)
+            if area >= _MIN_AREA and area > best_area:
                 M = cv2.moments(cnt)
                 if M["m00"] > 0:
                     best = (M["m10"] / M["m00"] / w, M["m01"] / M["m00"] / h)
-                    break
+                    best_area = area
 
         if best is not None:
             self._consec_seen += 1
@@ -81,6 +83,7 @@ class SpikeDetector:
                 # Lost sight of spike and not confirmed planted -- reset candidate
                 self._candidate = False
                 self._consec_seen = 0
+                self._consec_absent = 0
                 # Keep _pos so candidate_pos is still valid briefly
 
     def confirm_planted(self, pos: Optional[Tuple[float, float]] = None) -> None:
@@ -96,7 +99,6 @@ class SpikeDetector:
     @property
     def candidate_timeout_reached(self) -> bool:
         """True if candidate has been waiting longer than _AUDIO_CONFIRM_TIMEOUT."""
-        import time
         return (
             self._candidate
             and not self._planted

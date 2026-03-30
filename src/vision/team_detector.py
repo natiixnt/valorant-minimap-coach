@@ -39,9 +39,10 @@ class TeamDetector:
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         h, w = frame.data.shape[:2]
-        positions = []
+        candidates = []
         for cnt in contours:
-            if cv2.contourArea(cnt) < self._min_area:
+            area = cv2.contourArea(cnt)
+            if area < self._min_area:
                 continue
             M = cv2.moments(cnt)
             if M["m00"] <= 0:
@@ -51,10 +52,11 @@ class TeamDetector:
             # Exclude the local player icon (center ±0.12)
             if abs(nx - 0.5) < 0.12 and abs(ny - 0.5) < 0.12:
                 continue
-            positions.append((nx, ny))
+            candidates.append((area, (nx, ny)))
 
-        # Keep up to 4 largest
-        positions = positions[:_MAX_TEAMMATES]
+        # Keep up to 4 largest blobs (sort by area descending so biggest icons win)
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        positions = [pos for _, pos in candidates[:_MAX_TEAMMATES]]
         self._prev = positions
         return positions
 

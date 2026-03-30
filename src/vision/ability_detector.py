@@ -143,8 +143,8 @@ class AbilityDetector:
         self._sigs = _build_signatures(config)
         self._kernel = np.ones((3, 3), np.uint8)
         self._base_min = config.get("detection", {}).get("ability_min_area", 4)
-        # kind -> timestamp of last detection
-        self._active: Dict[str, float] = {}
+        # kind -> (timestamp, position) of last detection
+        self._active: Dict[str, Tuple[float, Tuple[float, float]]] = {}
 
     def _blobs(
         self,
@@ -196,10 +196,10 @@ class AbilityDetector:
                     color=sig["color"],
                     position=positions[0],
                 ))
-            self._active[kind] = now
+            self._active[kind] = (now, positions[0])
 
         gone: List[str] = []
-        stale = [k for k, t in self._active.items() if now - t > _GONE_AFTER]
+        stale = [k for k, (t, _) in self._active.items() if now - t > _GONE_AFTER]
         for k in stale:
             gone.append(k)
             del self._active[k]
@@ -208,5 +208,8 @@ class AbilityDetector:
 
     @property
     def active(self) -> Dict[str, dict]:
-        """Currently tracked abilities: kind -> sig dict (with display, color)."""
-        return {k: self._sigs[k] for k in self._active if k in self._sigs}
+        """Currently tracked abilities: kind -> sig dict (with display, color, position)."""
+        return {
+            k: {**self._sigs[k], "position": self._active[k][1]}
+            for k in self._active if k in self._sigs
+        }

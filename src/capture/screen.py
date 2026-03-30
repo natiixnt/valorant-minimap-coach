@@ -25,7 +25,11 @@ class ScreenCapture:
             print(f"[ScreenCapture] Grab failed: {e}")
             return None
         # mss returns BGRA; drop alpha for OpenCV
-        frame = np.array(raw)[:, :, :3]
+        arr = np.array(raw)
+        if arr.ndim != 3 or arr.shape[2] < 3:
+            print(f"[ScreenCapture] Unexpected frame shape: {arr.shape}")
+            return None
+        frame = arr[:, :, :3]
         return MinimapFrame(data=frame, timestamp=time.time(), region=self.region)
 
     def set_region(self, region: dict) -> None:

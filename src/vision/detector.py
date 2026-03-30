@@ -23,9 +23,9 @@ class MinimapDetector:
         det = config["detection"]
         self.enemy_lower = np.array(det["enemy_color_lower"])
         self.enemy_upper = np.array(det["enemy_color_upper"])
-        # Red wraps around hue=180 in HSV, so we need a second range
-        self.enemy_lower2 = np.array(det["enemy_color_lower2"])
-        self.enemy_upper2 = np.array(det["enemy_color_upper2"])
+        # Red wraps around hue=180 in HSV, so we need a second range (optional)
+        self.enemy_lower2 = np.array(det["enemy_color_lower2"]) if "enemy_color_lower2" in det else None
+        self.enemy_upper2 = np.array(det["enemy_color_upper2"]) if "enemy_color_upper2" in det else None
         self.team_lower = np.array(det["team_color_lower"])
         self.team_upper = np.array(det["team_color_upper"])
         self.min_area = det["min_contour_area"]
