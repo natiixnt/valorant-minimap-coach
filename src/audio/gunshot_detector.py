@@ -20,7 +20,7 @@ Distance estimation:
 Suppressor detection:
   Suppressed weapons have ~12-15 dB lower amplitude and slightly different
   spectral shape (attenuated highs above 4 kHz). We flag shots below a
-  threshold as "suppressed -- shooter may be using Vandal/Phantom silenced".
+  threshold as "suppressed - shooter may be using Vandal/Phantom silenced".
 
 Output: GunEvent dataclass per detected shot.
 """
@@ -119,7 +119,7 @@ class GunDetector:
             if (peak > bg_rms * _SUPPRESSED_MULT
                     and gap_since_last >= _MIN_GAP_N
                     and bg_rms > 1e-7):
-                # Onset confirmed -- analyze window
+                # Onset confirmed - analyze window
                 analysis = filtered[pos: pos + _ANALYSIS_N]
                 l_win = left[pos: pos + _ANALYSIS_N]
                 r_win = right[pos: pos + _ANALYSIS_N]

@@ -214,7 +214,7 @@ class MapDetector:
         self._last_check: float = 0.0
         self._sct         = mss.mss()
 
-        # Minimap region for radar matching -- loaded from config; updated by auto-calibration
+        # Minimap region for radar matching - loaded from config; updated by auto-calibration
         self._minimap_region: Optional[dict] = config.get("minimap", {}).get("region")
         try:
             from src.ui.overlay import load_settings as _ls
@@ -309,7 +309,7 @@ class MapDetector:
             print(f"[MapDetector] Local match: {map_name} (conf={confidence:.2f})")
             return map_name
 
-        # 2. Radar matching against official map overhead icons -- no API key needed
+        # 2. Radar matching against official map overhead icons - no API key needed
         minimap_img = self._grab_minimap()
         if minimap_img is not None:
             result, conf = self._radar_store.match(minimap_img)

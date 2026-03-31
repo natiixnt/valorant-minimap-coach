@@ -234,7 +234,7 @@ class Coach:
             self._ui(self._overlay.update_map, detected)  # type: ignore[union-attr]
             self._speak(f"Map detected: {detected}")
         else:
-            print("[Coach] Map detection timed out -- using 'unknown'")
+            print("[Coach] Map detection timed out - using 'unknown'")
 
     def _schedule_template_save(self, map_name: str) -> None:
         """Auto-learn: capture a template 45 s after startup so the game is in progress."""
@@ -269,7 +269,7 @@ class Coach:
             self._ui(self._overlay.update_map, new_map)  # type: ignore[union-attr]
             self._speak(f"New map: {new_map}")
             self.audio_coach.map_name = new_map
-            # New game -- reset agent detection and all per-game state
+            # New game - reset agent detection and all per-game state
             self.agent_detector.reset()
             self.enemy_agents.clear()
             self.ult_tracker.reset()
@@ -299,7 +299,7 @@ class Coach:
         self._shutdown()
 
     def _tick(self) -> None:
-        # -- Capture frame
+        # - Capture frame
         try:
             frame = self.capture.capture()
         except Exception as e:
@@ -308,12 +308,12 @@ class Coach:
         if frame is None:
             return
 
-        # -- CV detections
+        # - CV detections
         result  = self.detector.detect(frame)
         team    = self.team_detector.detect(frame)
         appeared, gone = self.ability_detector.update(frame)
 
-        # -- Round state machine
+        # - Round state machine
         spike_planted = self.spike_detector.is_planted
         rs_event = self.round_state.update(result.enemy_count, spike_planted)
 
@@ -333,41 +333,41 @@ class Coach:
             if ult_warn:
                 self._speak(ult_warn, ttl=12.0)
 
-        # -- Enemy zone heatmap
+        # - Enemy zone heatmap
         for x, y in result.enemies:
             zone = pos_to_zone(x, y, self.map_name)
             self.heatmap.add_sighting(zone, self.round_state.round_num)
 
-        # -- Zone transition callouts (stale fast -- enemy keeps moving)
+        # - Zone transition callouts (stale fast - enemy keeps moving)
         for trans in self.zone_tracker.update(result.enemies, self.map_name):
             self._speak(trans, ttl=2.0)
             self._ui(self._overlay.update_callout, trans)  # type: ignore[union-attr]
 
-        # -- Trajectory prediction (stale fast -- TTL matches 1.5s lookahead window)
+        # - Trajectory prediction (stale fast - TTL matches 1.5s lookahead window)
         for pred in self.trajectory.update(result.enemies, self.map_name):
             self._speak(pred, ttl=1.5)
             self._ui(self._overlay.update_callout, pred)  # type: ignore[union-attr]
 
-        # -- Play pattern detection (rush/split/lurk/execute)
+        # - Play pattern detection (rush/split/lurk/execute)
         play = self.play_det.update(result.enemies, self.map_name)
         if play:
-            # RUSH / EXECUTE / SPLIT are site-attack patterns -- flush queue and speak now.
-            # LURK / MID_CTRL are informational -- queue normally, don't flush.
+            # RUSH / EXECUTE / SPLIT are site-attack patterns - flush queue and speak now.
+            # LURK / MID_CTRL are informational - queue normally, don't flush.
             urgent = play.play in (PlayType.RUSH, PlayType.EXECUTE, PlayType.SPLIT)
             self._speak(play.voice, priority=urgent, ttl=4.0)
             self._ui(self._overlay.update_callout, play.voice)  # type: ignore[union-attr]
 
-        # -- UI: enemies
+        # - UI: enemies
         self._ui(self._overlay.update_enemies, result.enemy_count, result.enemies)  # type: ignore[union-attr]
 
-        # -- UI: active utility
+        # - UI: active utility
         active_abs = [
             {"display": sig["display"], "color": sig["color"], "position": sig["position"]}
             for sig in self.ability_detector.active.values()
         ]
         self._ui(self._overlay.update_utility, active_abs)  # type: ignore[union-attr]
 
-        # -- Player facing angle -> audio direction estimator
+        # - Player facing angle -> audio direction estimator
         try:
             player_angle = self.player_angle_detector.detect(frame)
             if player_angle is not None:
@@ -375,7 +375,7 @@ class Coach:
         except Exception:
             pass
 
-        # -- Player position (prefer team dots, fallback to enemy mirror)
+        # - Player position (prefer team dots, fallback to enemy mirror)
         if team:
             avg_tx = sum(x for x, y in team) / len(team)
             avg_ty = sum(y for x, y in team) / len(team)
@@ -388,11 +388,11 @@ class Coach:
                 float(1.0 - avg_ey),
             )
 
-        # -- Spike detection (two-phase: minimap candidate → audio beep confirms)
+        # - Spike detection (two-phase: minimap candidate → audio beep confirms)
         self.spike_detector.update(frame)
 
         if self.spike_detector.is_candidate and not self._spike_armed:
-            # Phase 1: minimap sees spike for 4+ frames -- arm beep detector silently.
+            # Phase 1: minimap sees spike for 4+ frames - arm beep detector silently.
             # Do NOT announce yet: spike may be dropped on ground or mid-plant (cancelled).
             self._spike_armed = True
             self.audio_coach.arm_spike_audio()
@@ -418,7 +418,7 @@ class Coach:
                 self.defuse_advisor.reset()
                 self.spike_detector.confirm_planted(pos)
 
-        # -- Retake advisor (post-plant phase)
+        # - Retake advisor (post-plant phase)
         planted_pos = self.spike_detector.planted_pos   # snapshot: audio thread may reset() concurrently
         if self.spike_detector.is_planted and planted_pos and team:
             time_since_plant = time.monotonic() - self._spike_plant_time
@@ -430,7 +430,7 @@ class Coach:
                 self._speak(advice, priority=True)
                 self._ui(self._overlay.update_callout, advice)  # type: ignore[union-attr]
 
-        # -- Defuse feasibility (post-plant phase)
+        # - Defuse feasibility (post-plant phase)
         if self.spike_detector.is_planted and planted_pos:
             remaining = self.audio_coach.spike_timer.remaining()
             if remaining is not None and remaining > 0:
@@ -445,7 +445,7 @@ class Coach:
                     spike_zone, self.map_name,
                 )
                 min_travel = travel[0][0] if travel else 5.0
-                # half_defused: enemy stopped defusing at >50% -- only 3.5s needed next time
+                # half_defused: enemy stopped defusing at >50% - only 3.5s needed next time
                 defuse_pct_now = self.audio_coach.defuse_sound.progress() or 0.0
                 defuse_advice = self.defuse_advisor.update(
                     remaining, min_travel, half_defused=defuse_pct_now >= 0.5
@@ -454,11 +454,11 @@ class Coach:
                     self._speak(defuse_advice, priority=True)
                     self._ui(self._overlay.update_callout, defuse_advice)  # type: ignore[union-attr]
 
-            # -- Defuse progress tracker (wall-clock from detected defuse start click)
+            # - Defuse progress tracker (wall-clock from detected defuse start click)
             defuse_pct = self.audio_coach.defuse_sound.progress()
             if defuse_pct is not None:
                 if defuse_pct >= 1.0:
-                    # Timer expired -- hide bar and re-arm so a new E-press can be detected
+                    # Timer expired - hide bar and re-arm so a new E-press can be detected
                     self._ui(self._overlay.hide_defuse_progress)  # type: ignore[union-attr]
                     self.audio_coach.defuse_sound.reset()
                     self.audio_coach.defuse_sound.arm()
@@ -467,7 +467,7 @@ class Coach:
             else:
                 self._ui(self._overlay.hide_defuse_progress)  # type: ignore[union-attr]
 
-        # -- New enemies spotted
+        # - New enemies spotted
         with self._lang_lock:
             _lang = self._callout_lang
         if result.enemy_count > self._prev_enemy_count:
@@ -476,7 +476,7 @@ class Coach:
                 self._speak(callout, priority=True)
                 self._ui(self._overlay.update_callout, callout)  # type: ignore[union-attr]
 
-        # -- Site clear (only during active round to avoid buy-phase false positives)
+        # - Site clear (only during active round to avoid buy-phase false positives)
         if (self._prev_enemy_count >= 2 and result.enemy_count == 0
                 and self.round_state.state == State.ROUND_ACTIVE):
             self._speak("Site clear", ttl=4.0)
@@ -485,7 +485,7 @@ class Coach:
         self._prev_enemy_count = result.enemy_count
         self._prev_team        = team
 
-        # -- Stack detection (3+ same zone, 3 frames)
+        # - Stack detection (3+ same zone, 3 frames)
         zone_counts: dict = {}
         for x, y in result.enemies:
             z = pos_to_zone(x, y, self.map_name)
@@ -506,7 +506,7 @@ class Coach:
                 self._stack_frames.pop(z, None)
                 self._stack_warned.discard(z)
 
-        # -- Ability callouts (voice=None means overlay-only, no TTS)
+        # - Ability callouts (voice=None means overlay-only, no TTS)
         for ab in appeared:
             zone = pos_to_zone(ab.position[0], ab.position[1], self.map_name)
             if ab.voice:
@@ -514,7 +514,7 @@ class Coach:
                 self._speak(txt, ttl=4.0)
                 self._ui(self._overlay.update_callout, txt)  # type: ignore[union-attr]
 
-        # -- AI deep analysis
+        # - AI deep analysis
         if self.ai and result.enemy_count > 0 and self.ai.should_analyze():
             try:
                 active_kinds = list(self.ability_detector.active.keys())
@@ -535,7 +535,7 @@ class Coach:
             except Exception as e:
                 print(f"[Coach] AI error: {e}")
 
-        # -- Pro audio: footstep zones + gunshots
+        # - Pro audio: footstep zones + gunshots
         for item in self.audio_coach.poll():
             if isinstance(item, GunEvent):
                 self._speak(item.voice, ttl=1.5)

@@ -2,17 +2,17 @@
 Play pattern recognition from enemy minimap positions.
 
 Detects:
-  RUSH      -- 3+ enemies tightly clustered, moving fast toward one site.
+  RUSH      - 3+ enemies tightly clustered, moving fast toward one site.
                "Rush detected! 4 enemies pushing B!"
-  EXECUTE   -- 4-5 enemies all converging on one site zone (slower, coordinated).
+  EXECUTE   - 4-5 enemies all converging on one site zone (slower, coordinated).
                "Execute onto A incoming! 4 enemies."
-  SPLIT     -- enemies split across both sites simultaneously.
+  SPLIT     - enemies split across both sites simultaneously.
                "Split! 2 on A, 2 on B."
-  LURK      -- 1 enemy isolated far from the rest (often flanking).
-               "Lurk detected -- check your flank."
-  MID_CTRL  -- 2+ enemies in mid zone fighting for map control.
+  LURK      - 1 enemy isolated far from the rest (often flanking).
+               "Lurk detected - check your flank."
+  MID_CTRL  - 2+ enemies in mid zone fighting for map control.
                "Enemies contesting mid."
-  SPREAD    -- enemies widely distributed (standard spread / no clear intent).
+  SPREAD    - enemies widely distributed (standard spread / no clear intent).
 
 Each detected play returns a PlayEvent with a voice callout and confidence.
 

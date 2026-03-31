@@ -83,7 +83,7 @@ class AIAnalyzer:
             if not resp.content:
                 return None
             if resp.stop_reason == "max_tokens":
-                # Response truncated -- likely not a clean callout
+                # Response truncated - likely not a clean callout
                 return None
             callout = resp.content[0].text.strip()
             if not callout:

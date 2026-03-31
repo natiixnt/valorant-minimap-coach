@@ -88,7 +88,7 @@ class AgentClassifier:
         """
         Train from a directory tree.
 
-        Preferred structure (shoe types -- matches Valorant's actual design):
+        Preferred structure (shoe types - matches Valorant's actual design):
           samples_dir/
             heavy/
               001.npy   (float32 mono array at 48000 Hz)
@@ -249,7 +249,7 @@ def extract_features(audio: np.ndarray) -> np.ndarray:
         audio = np.pad(audio, (0, clip_len - len(audio)))
     audio = audio[:clip_len]
 
-    # -- MFCCs
+    # - MFCCs
     mfcc = _mfcc(audio, sr, N_MFCC)          # (N_MFCC, T)
     mfcc_mean = mfcc.mean(axis=1)             # (N_MFCC,)
     # Delta (first order difference across time)
@@ -259,7 +259,7 @@ def extract_features(audio: np.ndarray) -> np.ndarray:
     else:
         delta_mean = np.zeros(N_MFCC)
 
-    # -- Spectral features
+    # - Spectral features
     stft = np.abs(_stft(audio, n_fft=512, hop=256))  # (freq_bins, T)
     freqs = np.fft.rfftfreq(512, d=1.0 / sr)
     mag_sum = stft.sum(axis=0) + 1e-9           # (T,)

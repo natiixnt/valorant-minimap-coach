@@ -6,7 +6,7 @@ Valorant spike facts (verified):
   - Plant time: 4 seconds
   - Defuse time: 7 seconds total; 3.5 s saves progress (half-defuse mechanic).
     If defuse is interrupted after 3.5 s, only 3.5 s more are needed on next attempt.
-    No defuse kits in Valorant -- always 7 s for full defuse.
+    No defuse kits in Valorant - always 7 s for full defuse.
 
 The spike beep rate escalates in discrete steps (community-documented, not officially
 published by Riot):
@@ -30,7 +30,7 @@ Advice is spoken at threshold crossings and time milestones (20 s, 10 s, 7 s).
 
 DefuseSoundDetector:
   Detects the defuse START click (short mid-frequency onset when E is pressed on spike).
-  Once detected, runs a pure wall-clock 7 s timer.  No abort detection -- if defuse is
+  Once detected, runs a pure wall-clock 7 s timer.  No abort detection - if defuse is
   cancelled the bar just counts to 100% and hides.  If E is pressed again after the
   cooldown window, on_spike_resolved() + arm() resets everything for a fresh detection.
 """
@@ -79,7 +79,7 @@ _ADVICE_THRESHOLDS = [20.0, 10.0, _DEFUSE_TIME + _DEFUSE_MARGIN]   # seconds rem
 # When a player presses E on the spike, Valorant plays a short mid-frequency
 # click/activation sound (~500-1500 Hz, ~40-80 ms).  We detect that single
 # onset and then run a pure wall-clock 7 s timer.
-# No "abort" detection from audio -- if defuse is cancelled the timer just
+# No "abort" detection from audio - if defuse is cancelled the timer just
 # reaches 100% and the bar hides.  If defuse restarts (new press of E), reset()
 # is called externally and a new onset can be detected.
 _DEFUSE_LOW_HZ   = 500    # bandpass low edge  (Hz)
@@ -87,7 +87,7 @@ _DEFUSE_HIGH_HZ  = 1500   # bandpass high edge (Hz)
 _DEFUSE_WIN_S    = 0.04   # analysis window 40 ms
 _DEFUSE_WIN      = int(_DEFUSE_WIN_S * SAMPLE_RATE)
 _DEFUSE_THRESH   = 5.0    # short RMS / long RMS ratio to fire onset
-_DEFUSE_COOLDOWN  = 8.0    # s -- re-arm only after this much time (prevent re-trigger)
+_DEFUSE_COOLDOWN  = 8.0    # s - re-arm only after this much time (prevent re-trigger)
 _DEFUSE_BG_ALPHA  = 0.005  # EMA coefficient for defuse detector background level
 
 # ── Butterworth bandpass (SOS) ───────────────────────────────────────────────
@@ -121,7 +121,7 @@ class SpikeBeepDetector:
         self._zi_bp = sosfilt_zi(_BP_SOS) * 0.0
 
     def arm(self) -> None:
-        """Call when spike is planted -- start listening for beeps."""
+        """Call when spike is planted - start listening for beeps."""
         self._active = True
 
     def process(self, mono: np.ndarray) -> List[float]:
@@ -243,7 +243,7 @@ class DefuseSoundDetector:
 
     On detection, onset_t is set to time.monotonic() and the detector goes deaf
     for _DEFUSE_COOLDOWN seconds (prevents re-triggering on echoes).
-    onset_t is cleared only by reset() -- called from coach.py when round ends
+    onset_t is cleared only by reset() - called from coach.py when round ends
     or when on_spike_resolved() fires.
 
     progress() returns wall-clock fraction (0.0-1.0) of the 7 s defuse window.
@@ -269,7 +269,7 @@ class DefuseSoundDetector:
         self._zi_defuse = sosfilt_zi(_DEFUSE_BP_SOS) * 0.0
 
     def arm(self) -> None:
-        """Call when spike is planted -- start listening for defuse start."""
+        """Call when spike is planted - start listening for defuse start."""
         self._armed = True
 
     def process(self, mono: np.ndarray) -> None:
@@ -297,7 +297,7 @@ class DefuseSoundDetector:
 
             ratio = short_rms / (self._long_rms + 1e-9)
             if ratio >= _DEFUSE_THRESH:
-                # Onset detected -- record and lock
+                # Onset detected - record and lock
                 self.onset_t = now - (len(mono) - start) / SAMPLE_RATE
                 self._last_onset_t = now
                 return   # one onset per chunk
@@ -332,7 +332,7 @@ class DefuseAdvisor:
       - Milestone callouts at 20s, 10s, and 7s remaining (once each)
       - Feasibility flip callout when go/no-go status changes
       - half_defused flag: if enemy already has half-defuse saved (3.5s done),
-        only 3.5s more are needed -- window is larger on restart.
+        only 3.5s more are needed - window is larger on restart.
     """
 
     def __init__(self) -> None:
@@ -356,7 +356,7 @@ class DefuseAdvisor:
         remaining     : seconds left on spike (from SpikeTimer.remaining())
         travel_time   : estimated seconds to reach spike
         half_defused  : True if defuse bar has passed 50% (3.5 s saved on enemy side)
-                        -- reduces required defuse time to 3.5 s on next attempt
+                        - reduces required defuse time to 3.5 s on next attempt
 
         Returns voice callout string or None.
         """
@@ -375,9 +375,9 @@ class DefuseAdvisor:
                 rem_int = int(remaining)
                 if threshold <= _DEFUSE_TIME + _DEFUSE_MARGIN:
                     if feasible:
-                        callout = f"{rem_int}s left -- go defuse now!"
+                        callout = f"{rem_int}s left - go defuse now!"
                     else:
-                        callout = f"{rem_int}s left -- no time to defuse, hold!"
+                        callout = f"{rem_int}s left - no time to defuse, hold!"
                 elif threshold == 10.0:
                     if feasible:
                         callout = f"10 seconds left, defuse possible."
@@ -393,7 +393,7 @@ class DefuseAdvisor:
         # ── Feasibility flip callout ─────────────────────────────────────────
         if callout is None and self._prev_feasible is not None:
             if self._prev_feasible and not feasible:
-                callout = "Window closed -- too late to defuse, play for hold."
+                callout = "Window closed - too late to defuse, play for hold."
             elif not self._prev_feasible and feasible:
                 callout = "Defuse window open, move now!"
 

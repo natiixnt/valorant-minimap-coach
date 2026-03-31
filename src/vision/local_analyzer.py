@@ -138,7 +138,7 @@ class LocalAnalyzer:
             except RuntimeError as oom:
                 if "out of memory" not in str(oom).lower():
                     raise
-                print("[LocalAnalyzer] CUDA OOM -- falling back to CPU")
+                print("[LocalAnalyzer] CUDA OOM - falling back to CPU")
                 torch.cuda.empty_cache()
                 self._device = "cpu"
                 try:

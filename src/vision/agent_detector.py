@@ -7,9 +7,9 @@ asks Claude to identify the 5 enemy team agents.
 
 Lifecycle:
 - Called once at game start (round 1 buy phase, ~3s after round start sound)
-- Runs in a background thread -- never blocks the coach loop
+- Runs in a background thread - never blocks the coach loop
 - On success: updates EnemyAgentTracker and prints detected agents
-- On failure: silent -- coach continues with no composition info
+- On failure: silent - coach continues with no composition info
 
 Result is cached for the entire game; re-detection is triggered if the
 map changes (i.e. a new game starts).
@@ -69,7 +69,7 @@ class AgentDetector:
         """
         Trigger background detection. Returns immediately.
         Calls on_done(agent_list) on the same background thread when finished.
-        Safe to call multiple times -- only runs once per game.
+        Safe to call multiple times - only runs once per game.
         """
         with self._lock:
             if self._detected_this_game:
@@ -120,7 +120,7 @@ class AgentDetector:
 
         prompt = (
             "This is a Valorant game screenshot taken during the buy phase. "
-            "At the TOP of the screen there is a row of agent portrait icons -- "
+            "At the TOP of the screen there is a row of agent portrait icons - "
             "left side is your team, right side is the ENEMY team (5 icons). "
             "Identify the 5 ENEMY team agents. "
             f"Known agents: {_AGENT_LIST}. "

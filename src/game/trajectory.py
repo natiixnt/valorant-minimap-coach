@@ -13,7 +13,7 @@ Algorithm:
   - Confidence decays with velocity uncertainty (high scatter = low confidence).
 
 Callout example:
-  "Enemy predicted at A Site in 1 second -- velocity from B Long"
+  "Enemy predicted at A Site in 1 second - velocity from B Long"
 """
 from __future__ import annotations
 

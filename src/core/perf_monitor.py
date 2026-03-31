@@ -39,7 +39,7 @@ class PerfMonitor:
             self._overruns += 1
             if self._overruns % 10 == 1:
                 print(f"[Perf] Tick took {elapsed*1000:.0f} ms "
-                      f"(target {self._target*1000:.0f} ms) -- "
+                      f"(target {self._target*1000:.0f} ms) - "
                       f"{self._overruns} overruns total")
         return elapsed
 

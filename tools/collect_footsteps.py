@@ -10,9 +10,9 @@ Riot AMA). They use shoe type categories. Collect samples by shoe type:
     python tools/collect_footsteps.py --agent light   --output data/footsteps/
 
 Shoe type categories:
-  heavy  -- Brimstone, Breach, Sage, Killjoy, Cypher, Deadlock, Omen, Viper, Astra, Sova
-  medium -- Skye, Phoenix, Fade, Gekko, Clove, Harbor, KAYO
-  light  -- Jett, Neon, Yoru, Reyna, ISO, Chamber
+  heavy  - Brimstone, Breach, Sage, Killjoy, Cypher, Deadlock, Omen, Viper, Astra, Sova
+  medium - Skye, Phoenix, Fade, Gekko, Clove, Harbor, KAYO
+  light  - Jett, Neon, Yoru, Reyna, ISO, Chamber
 
 You can also use per-agent names (e.g. --agent jett) and they will be auto-mapped
 to shoe type during training.

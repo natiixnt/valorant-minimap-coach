@@ -1,6 +1,6 @@
 # valorant-minimap-coach
 
-Screen-reading + audio-listening overlay that acts as a real-time coaching assistant during Valorant matches. Reads pixels from your screen and audio from your speakers -- never touches game memory. Vanguard watches for memory injection and kernel hooks, not screen capture or audio loopback APIs.
+Screen-reading + audio-listening overlay that acts as a real-time coaching assistant during Valorant matches. Reads pixels from your screen and audio from your speakers - never touches game memory. Vanguard watches for memory injection and kernel hooks, not screen capture or audio loopback APIs.
 
 **[Project Wiki](../../wiki)** - full technical documentation: audio pipeline, direction estimation, footstep/gunshot detection, map detection, TTS system, and changelog.
 
@@ -22,7 +22,7 @@ Screen-reading + audio-listening overlay that acts as a real-time coaching assis
 | **Trajectory prediction** | Extrapolates enemy movement 1.5 s ahead using linear velocity fit; warns before they cross a zone boundary |
 | **Play pattern detection** | Classifies enemy formations as RUSH / EXECUTE / SPLIT / LURK / MID_CTRL based on clustering and velocity |
 | **Site clear** | Announces when enemies that were visible all disappear |
-| **Map auto-detection** | Identifies map on startup via Claude Vision, then uses local HSV histogram matching -- one API call per map ever seen |
+| **Map auto-detection** | Identifies map on startup via Claude Vision, then uses local HSV histogram matching - one API call per map ever seen |
 
 ### Audio analysis
 
@@ -113,7 +113,7 @@ Current model prices: [console.anthropic.com/settings/billing](https://console.a
 |---|---|
 | Increase `ai.analyze_interval` from 3 s to 6 s | Halves call count → ~$4.40/month |
 | Switch `ai.model` to `claude-haiku-4-5-20251001` | ~10x cheaper → ~$1/month |
-| Set `ai.enabled: false` | $0 -- all CV/audio/game-logic callouts still work |
+| Set `ai.enabled: false` | $0 - all CV/audio/game-logic callouts still work |
 
 ---
 
@@ -132,9 +132,9 @@ cp .env.example .env
 
 | OS | Driver needed |
 |---|---|
-| Windows | WASAPI loopback -- built-in, no setup required |
-| macOS | [BlackHole](https://github.com/ExistentialAudio/BlackHole) or Loopback -- free/paid virtual audio device |
-| Linux | PulseAudio monitor source -- usually available by default |
+| Windows | WASAPI loopback - built-in, no setup required |
+| macOS | [BlackHole](https://github.com/ExistentialAudio/BlackHole) or Loopback - free/paid virtual audio device |
+| Linux | PulseAudio monitor source - usually available by default |
 
 Set Valorant's audio output to the loopback device, or use a virtual cable to split your speakers and the loopback.
 
@@ -197,8 +197,8 @@ data_collection:
 ```
 
 **What gets uploaded:**
-- Minimap frame (200×200 JPEG) + Claude callout as label -- on every AI analysis call
-- Footstep audio clip (48 kHz mono .npy) + zone + shoe type -- on confident footstep detections
+- Minimap frame (200×200 JPEG) + Claude callout as label - on every AI analysis call
+- Footstep audio clip (48 kHz mono .npy) + zone + shoe type - on confident footstep detections
 
 Full-screen captures are not uploaded. No usernames or chat text.
 

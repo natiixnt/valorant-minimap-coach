@@ -39,7 +39,7 @@ class TTSEngine:
                          drop the oldest non-priority item first
 
     Worker checks item.is_stale() before each say(). Stale items are silently
-    dropped -- prevents speaking "enemy A" 5 seconds after the situation changed.
+    dropped - prevents speaking "enemy A" 5 seconds after the situation changed.
 
     _last_spoken is updated only when an item is ACTUALLY SPOKEN (in the worker),
     not when it is queued. This prevents stale-dropped items from locking out
@@ -129,7 +129,7 @@ class TTSEngine:
             return
 
         if priority:
-            # Priority callouts bypass cooldown -- they flush the queue and speak now.
+            # Priority callouts bypass cooldown - they flush the queue and speak now.
             # Drain queue first (also clears _pending_texts)
             self._drain_queue()
             # Add to pending, then enqueue
@@ -187,7 +187,7 @@ class TTSEngine:
                 break
         with self._depth_lock:
             self._queue_depth = 0
-        # All pending items are gone -- clear the dedup set
+        # All pending items are gone - clear the dedup set
         with self._spoken_lock:
             self._pending_texts.clear()
 
@@ -269,7 +269,7 @@ class TTSEngine:
                 with self._spoken_lock:
                     self._pending_texts.discard(item.text)
 
-                # Drop stale items silently -- do NOT update _last_spoken.
+                # Drop stale items silently - do NOT update _last_spoken.
                 # This allows the same callout to be re-queued immediately next tick
                 # if the situation is still relevant.
                 if isinstance(item, _Item) and item.is_stale():

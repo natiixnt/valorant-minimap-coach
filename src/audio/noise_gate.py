@@ -12,8 +12,8 @@ Algorithm:
   4. Gate output: zero the signal for the duration of the transient + _RELEASE_MS tail.
 
 Tuning:
-  _GATE_RATIO = 8.0  -- trigger 8x above background (gunshot is ~20-40x louder)
-  _RELEASE_MS = 80   -- keep gate closed for 80 ms after transient end
+  _GATE_RATIO = 8.0  - trigger 8x above background (gunshot is ~20-40x louder)
+  _RELEASE_MS = 80   - keep gate closed for 80 ms after transient end
                         (gunshot reverb / echo dies out by then)
 
 Returns a gated copy of the audio (same shape, same dtype).
@@ -80,7 +80,7 @@ class NoiseGate:
             # Attack: re-arm the release counter every time a new transient peak is
             # detected - this extends the gate if reverb keeps the signal elevated.
             if short_rms > long_rms * _GATE_RATIO and long_rms > 1e-7:
-                # Transient detected -- open gate for release period
+                # Transient detected - open gate for release period
                 self._release_left = _RELEASE_N
 
             # Release: count down sample by sample; gate stays open for _RELEASE_N

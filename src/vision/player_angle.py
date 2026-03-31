@@ -33,7 +33,7 @@ _ICON_UPPER = np.array([105, 80, 255])
 _WHITE_LOWER = np.array([0, 0, 220])
 _WHITE_UPPER = np.array([180, 40, 255])
 
-_MIN_AREA = 8    # pixels — ignore tiny noise blobs
+_MIN_AREA = 8    # pixels  -  ignore tiny noise blobs
 
 
 class PlayerAngleDetector:

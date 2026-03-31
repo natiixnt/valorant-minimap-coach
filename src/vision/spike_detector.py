@@ -52,7 +52,7 @@ class SpikeDetector:
     def update(self, frame: MinimapFrame) -> None:
         """
         Call once per coach loop tick to update internal state.
-        Does NOT return position directly -- use is_candidate / is_planted / planted_pos.
+        Does NOT return position directly - use is_candidate / is_planted / planted_pos.
         """
         hsv = cv2.cvtColor(frame.data, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, _SPIKE_LOWER, _SPIKE_UPPER)
@@ -80,7 +80,7 @@ class SpikeDetector:
         else:
             self._consec_absent += 1
             if self._consec_absent >= _CLEAR_FRAMES and not self._planted:
-                # Lost sight of spike and not confirmed planted -- reset candidate
+                # Lost sight of spike and not confirmed planted - reset candidate
                 self._candidate = False
                 self._consec_seen = 0
                 self._consec_absent = 0

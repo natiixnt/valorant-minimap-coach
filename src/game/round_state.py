@@ -2,10 +2,10 @@
 Round state machine for Valorant.
 
 States:
-  BUY_PHASE    -- 30 s buy window at round start
-  ROUND_ACTIVE -- live round, no spike planted
-  POST_PLANT   -- spike has been planted
-  ROUND_END    -- round over (win or loss)
+  BUY_PHASE    - 30 s buy window at round start
+  ROUND_ACTIVE - live round, no spike planted
+  POST_PLANT   - spike has been planted
+  ROUND_END    - round over (win or loss)
 
 Transitions are driven by:
   - Spike detection (POST_PLANT)

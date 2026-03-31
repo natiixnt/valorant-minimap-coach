@@ -87,7 +87,7 @@ _DEFAULTS: Dict[str, dict] = {
         "color": "#78909c",
         "min_area": 14,
     },
-    # Skye guide (Trailblazer) — bright teal flash
+    # Skye guide (Trailblazer)  -  bright teal flash
     "skye_guide": {
         "lower": [158, 130, 150],
         "upper": [172, 255, 255],
@@ -96,7 +96,7 @@ _DEFAULTS: Dict[str, dict] = {
         "color": "#26c6da",
         "min_area": 5,
     },
-    # Cypher camera — small bright cyan dot (slightly different hue from team)
+    # Cypher camera  -  small bright cyan dot (slightly different hue from team)
     "cypher_camera": {
         "lower": [85, 180, 180],
         "upper": [100, 255, 255],
@@ -105,7 +105,7 @@ _DEFAULTS: Dict[str, dict] = {
         "color": "#00e5ff",
         "min_area": 3,
     },
-    # KAY/O knife suppression circle — lime green
+    # KAY/O knife suppression circle  -  lime green
     "kayo_knife": {
         "lower": [40, 160, 160],
         "upper": [58, 255, 255],

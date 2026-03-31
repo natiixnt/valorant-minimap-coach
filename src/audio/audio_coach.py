@@ -116,7 +116,7 @@ class AudioCoach:
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
-        # Round audio event detector -- callbacks wired by coach.py
+        # Round audio event detector - callbacks wired by coach.py
         self.round_audio = RoundAudioDetector()
 
         # Spike audio: beep detector + timer + defuse tracker exposed to coach.py
@@ -185,12 +185,12 @@ class AudioCoach:
     def arm_spike_audio(self) -> None:
         """
         Arm the beep detector when minimap shows a spike candidate (not yet confirmed).
-        Does NOT start the timer -- call on_spike_planted() when plant is audio-confirmed.
+        Does NOT start the timer - call on_spike_planted() when plant is audio-confirmed.
         """
         self._spike_beep.arm()
 
     def on_spike_planted(self, plant_time: float) -> None:
-        """Confirm spike planted -- start timer and arm defuse detection."""
+        """Confirm spike planted - start timer and arm defuse detection."""
         self._spike_timer.on_spike_planted(plant_time)
         self._defuse_sound.arm()
 
@@ -254,7 +254,7 @@ class AudioCoach:
             # Round audio event detection (round start horn, win/loss jingle)
             self.round_audio.process(mono)
 
-            # Gunshot detection (before noise gate -- gunshots ARE the transients)
+            # Gunshot detection (before noise gate - gunshots ARE the transients)
             gun_events: List[GunEvent] = self._gun_det.process(stereo)
             for ge in gun_events:
                 now_m = time.monotonic()
@@ -273,7 +273,7 @@ class AudioCoach:
             gated_r = self._noise_gate.process(stereo[1])
             gated_stereo = np.stack([gated_l, gated_r])
 
-            # Spike beep detection (on raw mono -- beeps are tonal, not gated)
+            # Spike beep detection (on raw mono - beeps are tonal, not gated)
             for beep_t in self._spike_beep.process(mono):
                 self._spike_timer.add_beep(beep_t)
 
@@ -320,7 +320,7 @@ class AudioCoach:
             player_pos    = self._player_pos
             map_name      = self._map_name
 
-        # -- Direction
+        # - Direction
         az, dist_m = self._direction_est.estimate(stereo, event.amplitude_db)
         # Blend onset-frame stereo balance as a third directional cue.
         # stereo_balance (-1..+1) maps directly to ±90° azimuth - same sign convention.
@@ -339,7 +339,7 @@ class AudioCoach:
             player_pos, map_dir, dist_m, scale_m_per_unit=scale
         )
 
-        # -- Shoe type classification
+        # - Shoe type classification
         # Note: Valorant agents do NOT have unique footstep sounds per Riot.
         # We classify shoe type (heavy/medium/light) which maps to broad agent categories.
         mono_window = (stereo[0] + stereo[1]) * 0.5
@@ -359,12 +359,12 @@ class AudioCoach:
             else:
                 shoe_display = f"{shoe_type}-step enemy"
 
-        # -- Zone name from estimated map position
+        # - Zone name from estimated map position
         zone = ""
         if map_name != "unknown":
             zone = pos_to_zone(est_pos[0], est_pos[1], map_name)
 
-        # -- Surface cross-check against map
+        # - Surface cross-check against map
         map_surface = get_surface(est_pos[0], est_pos[1], map_name)
         surface = event.surface
         surface_hint = ""
@@ -373,7 +373,7 @@ class AudioCoach:
         if surface != "concrete":
             surface_hint = f" on {surface_to_voice(surface)}"
 
-        # -- Build callout: prefer zone name over directional word
+        # - Build callout: prefer zone name over directional word
         dist_word = _dist_to_word(dist_m)
         if zone and zone != "Unknown":
             location = zone                        # "B Long", "Mid Courtyard", etc.

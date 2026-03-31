@@ -4,9 +4,9 @@ Ultimate ability charge estimation per enemy slot.
 Without game API access, we estimate ult charge from round count.
 Valorant ults charge via kills (1pt), deaths (1pt), orb pickups (1pt),
 spike plant (1pt), spike defuse completion (1pt).
-  - Ult point costs range from 6 (Reyna, Cypher) to 9 (Breach) -- varies per agent.
+  - Ult point costs range from 6 (Reyna, Cypher) to 9 (Breach) - varies per agent.
   - Typical recharge: 3-5 rounds with average kill count + 1-2 orbs per half.
-  - Orbs: 2 per map per HALF (not per round) -- collected once, not respawning.
+  - Orbs: 2 per map per HALF (not per round) - collected once, not respawning.
     Fracture has 4 orbs per half.
 
 We warn conservatively (better to warn too early than miss).
@@ -17,7 +17,7 @@ Limitations:
   - This is a heuristic warning, not a guarantee.
 
 Callout examples:
-  "Caution: enemy ults likely charged -- round 4"
+  "Caution: enemy ults likely charged - round 4"
   "Enemy ults likely charged this round. Play safe."
 
 Trigger conditions:
@@ -33,7 +33,7 @@ from typing import Optional
 # Earliest: 6pt ult + 1 orb pickup = 5 kills needed, achievable by round 3-4.
 # Using round 4 as conservative first warning.
 _ULT_WARN_ROUNDS = {4, 7, 10, 13, 16, 19, 22}
-_RECHARGE_ROUNDS = 4     # rounds per ult cycle -- verified typical 3-5, using 4
+_RECHARGE_ROUNDS = 4     # rounds per ult cycle - verified typical 3-5, using 4
 
 
 class UltTracker:

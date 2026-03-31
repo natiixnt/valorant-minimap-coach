@@ -15,7 +15,7 @@ Usage:
 The heatmap feeds into:
   - play_detector.py  (pattern confirmation across rounds)
   - Overlay visualization (hot zones shown in orange/red)
-  - TTS: "B has been hot -- enemy showed up there last 3 rounds"
+  - TTS: "B has been hot - enemy showed up there last 3 rounds"
 """
 from __future__ import annotations
 

@@ -25,7 +25,7 @@ Features:
 Threading model:
   A single daemon thread drains a bounded queue (max 64 items).
   Items are batched (_BATCH_SIZE or _BATCH_TIMEOUT) and pushed as a single
-  commit to a Hugging Face dataset repo -- no intermediate server needed.
+  commit to a Hugging Face dataset repo - no intermediate server needed.
 
 Dataset layout (mirrors server/collect_server.py):
   minimap_callout/<sha12>/{ts}_v{ver}_conf{c}.jpg   + .json sidecar
@@ -58,7 +58,7 @@ def _safe(s: str, max_len: int = 60) -> str:
     return "".join(c for c in str(s) if c.isalnum() or c in "_-.")[:max_len]
 
 
-# Default repo -- token is loaded from config.yaml (bundled with the exe, never in source).
+# Default repo - token is loaded from config.yaml (bundled with the exe, never in source).
 _DEFAULT_HF_REPO = "naithai/valorant-minimap-coach"
 
 
@@ -84,7 +84,7 @@ class DataCollector:
         if self.enabled and self._hf_token:
             threading.Thread(target=self._init_repo, daemon=True, name="CollectorInit").start()
         elif self.enabled:
-            print("[Collector] No hf_token in config -- data collection disabled.")
+            print("[Collector] No hf_token in config - data collection disabled.")
 
     def _init_repo(self) -> None:
         """Ensure the HF dataset repo exists, then start the worker thread."""

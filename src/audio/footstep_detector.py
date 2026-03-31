@@ -17,7 +17,7 @@ Valorant-confirmed footstep data (Riot AMA + community EQ analysis):
   - Crouched max range:    ~12 m
   - Shift-walk:            silent (0 m)
   - Attenuation model:     deliberately FLAT (not inverse-square). Riot confirmed they
-                           do not model realistic distance falloff -- footsteps stay
+                           do not model realistic distance falloff - footsteps stay
                            audible clearly even at max range.
 
 Surface classification via spectral centroid of the full spectrum (not bandpassed).
@@ -48,7 +48,7 @@ _MIN_ONSET_SAMPLES = int(_MIN_ONSET_SEC * SAMPLE_RATE / HOP_SIZE)  # in frames (
 # Using three features (centroid, rolloff, ZCR) instead of centroid alone resolves
 # cases where e.g. a hollow wood thump and a concrete step share similar centroids
 # but differ in how broadly their energy is distributed (rolloff) and how noisy
-# the waveform is (ZCR -- metal rings with rapid sign changes, carpet is smooth).
+# the waveform is (ZCR - metal rings with rapid sign changes, carpet is smooth).
 _CARPET_MAX_CENTROID  = 450    # Hz: carpet absorbs high frequencies, centroid sits very low
 _CARPET_MAX_ROLLOFF   = 1500   # Hz: 85% of carpet energy is below 1.5 kHz
 _METAL_MIN_CENTROID   = 1100   # Hz: metallic ring shifts spectral weight above 1 kHz
@@ -63,7 +63,7 @@ class FootstepEvent:
     time_sec: float          # seconds since capture started
     surface: str             # "metal" | "wood" | "concrete" | "carpet" | "unknown"
     centroid_hz: float       # spectral centroid for reference
-    amplitude_db: float      # RMS in dB (proxy for distance — quieter = farther)
+    amplitude_db: float      # RMS in dB (proxy for distance  -  quieter = farther)
     stereo_balance: float    # L-R energy ratio, -1.0 left … +1.0 right
 
 
@@ -85,7 +85,7 @@ class FootstepDetector:
     # ------------------------------------------------------------------
     def process(self, stereo: np.ndarray) -> List[FootstepEvent]:
         """
-        stereo: float32 array shaped (2, N) — left/right channels.
+        stereo: float32 array shaped (2, N)  -  left/right channels.
         Returns list of FootstepEvent detected in this chunk.
         """
         if stereo.shape[0] < 2 or stereo.shape[1] < FRAME_SIZE:

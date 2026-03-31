@@ -6,7 +6,7 @@ and generates concrete rotation advice: who is closest, what route to take,
 how much time they have.
 
 Map travel times are pre-computed from callout zone centroids using approximate
-graph distances (not pathfinding -- just straight-line / zone-adjacency estimates).
+graph distances (not pathfinding - just straight-line / zone-adjacency estimates).
 These are tuned per map and intentionally conservative (add 20% for realistic play).
 
 Output example:
@@ -155,7 +155,7 @@ class RetakeAdvisor:
 
         if closest_time > time_left - _DEFUSE_TIME:
             return (
-                f"Spike at {spike_zone}! {int(time_left)}s left -- "
+                f"Spike at {spike_zone}! {int(time_left)}s left - "
                 f"too far, consider abandoning retake."
             )
 

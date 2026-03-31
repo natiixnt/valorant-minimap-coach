@@ -2,10 +2,10 @@
 Per-map surface material zones for Valorant.
 
 Surface type affects footstep sound character:
-  metal    — bright, ring-y, spectral centroid > 1100 Hz
-  concrete — solid thud, 650-1100 Hz
-  wood     — warm, 350-650 Hz
-  carpet   — muffled, < 350 Hz
+  metal     -  bright, ring-y, spectral centroid > 1100 Hz
+  concrete  -  solid thud, 650-1100 Hz
+  wood      -  warm, 350-650 Hz
+  carpet    -  muffled, < 350 Hz
 
 Zone coordinates are normalized (0-1) matching the callouts.py coordinate system.
 Format: list of (x_min, x_max, y_min, y_max, surface_type)

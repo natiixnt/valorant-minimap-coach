@@ -118,7 +118,7 @@ def _detect_minimap_circle(img_bgr: np.ndarray) -> Optional[dict]:
     """
     Find Valorant's circular minimap in a full-screen BGR screenshot.
     The minimap is a circle (dark olive/grey disc) in the top portion of the
-    screen -- either top-left or top-right depending on player settings.
+    screen - either top-left or top-right depending on player settings.
     Returns an mss-compatible region dict (bounding box) or None.
     """
     import cv2
@@ -737,7 +737,7 @@ class SettingsWindow(ctk.CTkToplevel):
     def _build_map_override(self, parent, c: dict) -> None:
         self._section(parent, "MAP")
         ctk.CTkLabel(parent,
-                     text="  Select once -- app auto-learns and will detect\n"
+                     text="  Select once - app auto-learns and will detect\n"
                           "  this map automatically in all future sessions.",
                      text_color=c["dim"], font=("Consolas", 8), justify="left").pack(
             anchor="w", padx=14, pady=(0, 6))
@@ -821,7 +821,7 @@ class SettingsWindow(ctk.CTkToplevel):
                         text_color="#4caf50"))
                 else:
                     self.after(0, lambda: self._cal_status.configure(
-                        text="  not found -- try MANUAL calibration",
+                        text="  not found - try MANUAL calibration",
                         text_color="#f44336"))
             except Exception as e:
                 err = str(e)[:50]
@@ -879,7 +879,7 @@ class SettingsWindow(ctk.CTkToplevel):
                         text_color="#4caf50"))
                 else:
                     self.after(0, lambda: self._cal_status.configure(
-                        text="  cancelled -- need 2 points", text_color="#f44336"))
+                        text="  cancelled - need 2 points", text_color="#f44336"))
             except Exception as e:
                 err = str(e)[:50]
                 self.after(0, lambda: self._cal_status.configure(
@@ -918,7 +918,7 @@ class SettingsWindow(ctk.CTkToplevel):
             corner_radius=2, command=_toggle_show,
         ).pack(side="left", padx=(4, 0))
 
-        # Test button -- makes a real 1-token API call in a background thread
+        # Test button - makes a real 1-token API call in a background thread
         self._test_btn = ctk.CTkButton(
             row, text="TEST", width=46, height=28,
             fg_color=c["panel"], text_color=c["dim"],
@@ -1643,7 +1643,7 @@ class OverlayWindow(ctk.CTk):
         )
         self._defuse_pct_lbl.pack(side="right")
 
-        # Canvas bar -- drawn manually for Valorant-style mid-tick
+        # Canvas bar - drawn manually for Valorant-style mid-tick
         self._defuse_cv = tk.Canvas(
             p, width=self._DB_W, height=self._DB_H,
             bg=c["bg"], highlightthickness=0,
@@ -1681,7 +1681,7 @@ class OverlayWindow(ctk.CTk):
             cv.create_rectangle(0, tr, fill_w, H - tr,
                                 fill=bar_color, outline="")
 
-        # 50% tick -- two-tone: bright line spanning full bar height
+        # 50% tick - two-tone: bright line spanning full bar height
         tick_color = "#ffffff" if pct < 0.5 else "#888888"
         cv.create_line(mid, 0, mid, H, fill=tick_color, width=1)
 

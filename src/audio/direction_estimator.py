@@ -2,11 +2,11 @@
 Stereo direction estimation for footstep events.
 
 Combines two cues:
-  ITD  — Interaural Time Delay.   Cross-correlation peak lag between L/R channels.
+  ITD   -  Interaural Time Delay.   Cross-correlation peak lag between L/R channels.
          Good at low frequencies (< 1.5 kHz).  Max lag at human head: ~0.65 ms
          at 48 kHz = ±31 samples.
 
-  ILD  — Interaural Level Difference.  Log ratio of L/R RMS energy.
+  ILD   -  Interaural Level Difference.  Log ratio of L/R RMS energy.
          Good at high frequencies (> 1.5 kHz).
 
 Valorant audio engine (confirmed via Riot AMA + community):
@@ -17,7 +17,7 @@ Valorant audio engine (confirmed via Riot AMA + community):
   - Running footsteps: audible up to ~50 m.
   - Walking: ~15 m.  Crouched: ~12 m.  Shift-walk: silent.
 
-IMPORTANT -- Valorant uses a FLAT attenuation model by design (confirmed by Riot).
+IMPORTANT - Valorant uses a FLAT attenuation model by design (confirmed by Riot).
 Volume does NOT fall off realistically with distance. A footstep at 5 m and at 40 m
 can have similar amplitude in the mix. Amplitude-based distance estimates are therefore
 unreliable and should be treated as a rough lower-bound (quieter = farther, but not
@@ -44,7 +44,7 @@ _MAX_LAG = 32
 _ITD_WEIGHT = 0.6
 _ILD_WEIGHT = 0.4
 
-# Distance calibration (unreliable due to Valorant flat attenuation -- use as rough estimate only)
+# Distance calibration (unreliable due to Valorant flat attenuation - use as rough estimate only)
 _REF_AMP_DB = -18.0   # dB RMS expected at ~5 m reference distance
 _REF_DIST_M = 5.0
 _MAX_DIST_M = 50.0    # running footsteps audible up to ~50 m per Riot

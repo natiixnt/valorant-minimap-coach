@@ -7,7 +7,7 @@ Detects round boundaries from the game audio stream:
   - Round win jingle    : bright, multi-tone 1-3 kHz signature
   - Round loss jingle   : lower, minor-key 500-1500 Hz signature
 
-All detection uses spectral energy ratios -- no ML needed, just tuned
+All detection uses spectral energy ratios - no ML needed, just tuned
 bandpass energy comparison.
 
 Outputs via callbacks set by the caller:

@@ -3,7 +3,7 @@ Enemy agent composition tracker.
 
 Tracks which 5 agents the enemy team is playing and which are still alive
 this round. When a footstep shoe type is detected, provides the list of
-alive enemy agents that match -- narrowing "heavy footstep" to
+alive enemy agents that match - narrowing "heavy footstep" to
 "Breach or Brimstone" when those are the only heavy-boot enemies alive.
 
 Usage:
@@ -95,9 +95,9 @@ class EnemyAgentTracker:
         Build a display string narrowing down the agent(s) for a shoe type.
 
         Returns:
-            "Breach"               -- exactly one candidate
-            "Breach or Brimstone"  -- two candidates
-            None                   -- zero or 3+ candidates (fall back to generic)
+            "Breach"               - exactly one candidate
+            "Breach or Brimstone"  - two candidates
+            None                   - zero or 3+ candidates (fall back to generic)
         """
         candidates = self.candidates_for_shoe_type(shoe_type)
         if not candidates:
@@ -106,5 +106,5 @@ class EnemyAgentTracker:
             return agent_display(candidates[0])
         if len(candidates) == 2:
             return f"{agent_display(candidates[0])} or {agent_display(candidates[1])}"
-        # 3+ candidates -- not narrow enough to be useful, let caller use generic
+        # 3+ candidates - not narrow enough to be useful, let caller use generic
         return None

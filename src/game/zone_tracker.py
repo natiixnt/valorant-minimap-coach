@@ -2,7 +2,7 @@
 Enemy zone occupancy tracker with transition detection.
 
 Tracks which map zone each visible enemy occupies frame-to-frame.
-Announces when an enemy transitions FROM one zone INTO another -- giving
+Announces when an enemy transitions FROM one zone INTO another - giving
 the defender information about enemy movement direction before they arrive.
 
 Example callouts:
@@ -69,7 +69,7 @@ class ZoneTracker:
                 unmatched_enemies.remove(best_idx)
                 unmatched_slots.remove(slot_id)
 
-        # Unmatched old slots: enemy left vision -- remove after 2s
+        # Unmatched old slots: enemy left vision - remove after 2s
         for slot_id in list(self._slots.keys()):
             if slot_id not in matched_slots:
                 if now - self._slots[slot_id].get("last_seen", now) > 2.0:
@@ -115,7 +115,7 @@ class ZoneTracker:
                 slot["pending_count"] = 0
                 continue
 
-            # New zone -- start or continue pending confirmation
+            # New zone - start or continue pending confirmation
             if new_zone == slot["pending_zone"]:
                 slot["pending_count"] += 1
             else:

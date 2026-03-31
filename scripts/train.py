@@ -114,7 +114,7 @@ class MinimapDataset:
         try:
             image = Image.open(s["image_path"]).convert("RGB")
         except Exception as e:
-            log.warning(f"Failed to load image {s['image_path']}: {e} -- using blank")
+            log.warning(f"Failed to load image {s['image_path']}: {e} - using blank")
             image = Image.new("RGB", (224, 224))
 
         parts = [f"Valorant minimap, map {s['map']}." if s["map"] else "Valorant minimap."]

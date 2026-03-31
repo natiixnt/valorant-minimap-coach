@@ -41,7 +41,7 @@ class EconomyStatus:
 _ECO_MAX   = 1800
 _FORCE_MAX = 3200
 
-# Loss bonus by streak (1st loss, 2nd, 3rd+ -- verified Valorant Wiki; caps at 2900)
+# Loss bonus by streak (1st loss, 2nd, 3rd+ - verified Valorant Wiki; caps at 2900)
 _LOSS_BONUS = [1900, 2400, 2900]
 _WIN_BONUS  = 3000
 _ROUND_BONUS_KILL = 200

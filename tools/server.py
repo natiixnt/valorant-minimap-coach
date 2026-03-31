@@ -10,11 +10,11 @@ Usage:
     python tools/server.py --port 8000 --key mysecretkey --data ./server_data/
 
 Endpoints:
-    POST /collect          -- receive a sample (image or audio clip)
-    GET  /stats            -- collection statistics JSON
-    GET  /review           -- browser review UI (footstep audio clips)
-    POST /label/<ts>       -- submit corrected label for a sample
-    GET  /download/<type>  -- download all samples of a type as a zip
+    POST /collect          - receive a sample (image or audio clip)
+    GET  /stats            - collection statistics JSON
+    GET  /review           - browser review UI (footstep audio clips)
+    POST /label/<ts>       - submit corrected label for a sample
+    GET  /download/<type>  - download all samples of a type as a zip
 
 Client config (config.yaml):
     data_collection:
@@ -137,7 +137,7 @@ def create_app():
         return result
 
     # ------------------------------------------------------------------
-    # GET /review -- footstep audio review UI
+    # GET /review - footstep audio review UI
     # ------------------------------------------------------------------
     @app.get("/review", response_class=HTMLResponse)
     async def review(x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
@@ -186,7 +186,7 @@ def create_app():
 </style>
 </head>
 <body>
-<h2>Footstep Audio Review -- {len(samples)} samples</h2>
+<h2>Footstep Audio Review - {len(samples)} samples</h2>
 <table>
 <thead><tr>
   <th>Timestamp</th><th>Map</th><th>Zone</th><th>Current Label</th>

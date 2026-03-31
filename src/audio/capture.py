@@ -120,7 +120,7 @@ class AudioCapture:
                         # thread and analysis loop are never blocked waiting for audio.
                         data = rec.record(numframes=CHUNK_FRAMES)   # (frames, channels)
                         if data.shape[1] < CHANNELS:
-                            # Mono device — duplicate channel
+                            # Mono device  -  duplicate channel
                             data = np.repeat(data, CHANNELS, axis=1)
                         with self._lock:
                             self._ring.append(data[:, :CHANNELS].astype(np.float32))
@@ -151,11 +151,11 @@ class AudioCapture:
             if any(k in ml for k in keywords):
                 return m
 
-        # Fallback: default microphone -- this captures mic audio, NOT game audio.
+        # Fallback: default microphone - this captures mic audio, NOT game audio.
         # Coach footstep/gunshot detection will be unreliable. Set audio_coach.device
         # in config.yaml to a loopback device (BlackHole on macOS, Stereo Mix on Windows).
         print("[AudioCapture] WARNING: No loopback device found. Falling back to default "
-              "microphone -- audio analysis will use mic input, not game audio.")
+              "microphone - audio analysis will use mic input, not game audio.")
         try:
             return sc.default_microphone()
         except Exception:
